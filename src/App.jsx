@@ -100,7 +100,7 @@ const BaseballTeamManager = () => {
   // 타자 성적 로드
   const loadBatterStats = async () => {
     try {
-      const data = await apiRead('타자성적!A2:Z');
+      const data = await apiRead('타자성적!A2:AB');
       if (data) {
         const stats = data.map((row, idx) => ({
           id: idx + 1,
@@ -130,7 +130,9 @@ const BaseballTeamManager = () => {
           obp: parseFloat(row[23]) || 0,
           sbPct: parseFloat(row[24]) || 0,
           multiHit: parseInt(row[25]) || 0,
-          ops: parseFloat(row[26]) || 0
+          ops: parseFloat(row[26]) || 0,
+          bbK: parseFloat(row[27]) || 0,
+          xbhHit: parseFloat(row[28]) || 0
         }));
         setBatterStats(stats);
       }
@@ -142,7 +144,7 @@ const BaseballTeamManager = () => {
   // 투수 성적 로드
   const loadPitcherStats = async () => {
     try {
-      const data = await apiRead('투수성적!A2:Z');
+      const data = await apiRead('투수성적!A2:AA');
       if (data) {
         const stats = data.map((row, idx) => ({
           id: idx + 1,
@@ -170,7 +172,9 @@ const BaseballTeamManager = () => {
           bk: parseInt(row[21]) || 0,
           runs: parseInt(row[22]) || 0,
           er: parseInt(row[23]) || 0,
-          whip: parseFloat(row[24]) || 0
+          whip: parseFloat(row[24]) || 0,
+          avg: parseFloat(row[25]) || 0,
+          kPer9: parseFloat(row[26]) || 0
         }));
         setPitcherStats(stats);
       }
@@ -228,17 +232,17 @@ const BaseballTeamManager = () => {
       await apiWrite('선수명단!A1:F1', [['이름', '번호', '포지션1', '포지션2', '포지션3', '포지션4']]);
       
       // 타자성적 헤더
-      await apiWrite('타자성적!A1:AA1', [[
+      await apiWrite('타자성적!A1:AB1', [[
         '이름', '타율', '경기수', '타석', '타수', '득점', '총안타', '1루타', '2루타', '3루타', 
         '홈런', '루타', '타점', '도루', '도실', '희타', '희비', '볼넷', '고의4구', '사구', 
-        '삼진', '병살', '장타율', '출루율', '도루성공률', '멀티히트', 'OPS'
+        '삼진', '병살', '장타율', '출루율', '도루성공률', '멀티히트', 'OPS', 'BB/K', '장타/안타'
       ]]);
       
       // 투수성적 헤더
-      await apiWrite('투수성적!A1:Y1', [[
+      await apiWrite('투수성적!A1:AA1', [[
         '이름', '방어율', '경기수', '승', '패', '세이브', '홀드', '승률', '타자', '타수', 
         '투구수', '이닝', '피안타', '피홈런', '희타', '희비', '볼넷', '고의4구', '사구', 
-        '탈삼진', '폭투', '보크', '실점', '자책점', 'WHIP'
+        '탈삼진', '폭투', '보크', '실점', '자책점', 'WHIP', '피안타율', '탈삼진율'
       ]]);
       
       // 경기기록 헤더
@@ -668,6 +672,8 @@ const BaseballTeamManager = () => {
                       <th className="px-3 py-2 text-right">장타율</th>
                       <th className="px-3 py-2 text-right">출루율</th>
                       <th className="px-3 py-2 text-right">OPS</th>
+                      <th className="px-3 py-2 text-right">BB/K</th>
+                      <th className="px-3 py-2 text-right">장타/안타</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -689,6 +695,8 @@ const BaseballTeamManager = () => {
                         <td className="px-3 py-2 text-right">{stat.slg.toFixed(3)}</td>
                         <td className="px-3 py-2 text-right">{stat.obp.toFixed(3)}</td>
                         <td className="px-3 py-2 text-right font-bold text-blue-400">{stat.ops.toFixed(3)}</td>
+                        <td className="px-3 py-2 text-right">{stat.bbK.toFixed(2)}</td>
+                        <td className="px-3 py-2 text-right">{stat.xbhHit.toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -719,6 +727,8 @@ const BaseballTeamManager = () => {
                       <th className="px-3 py-2 text-right">실점</th>
                       <th className="px-3 py-2 text-right">자책</th>
                       <th className="px-3 py-2 text-right">WHIP</th>
+                      <th className="px-3 py-2 text-right">피안타율</th>
+                      <th className="px-3 py-2 text-right">탈삼진율</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -738,6 +748,8 @@ const BaseballTeamManager = () => {
                         <td className="px-3 py-2 text-right">{stat.runs}</td>
                         <td className="px-3 py-2 text-right">{stat.er}</td>
                         <td className="px-3 py-2 text-right">{stat.whip.toFixed(2)}</td>
+                        <td className="px-3 py-2 text-right">{stat.avg.toFixed(3)}</td>
+                        <td className="px-3 py-2 text-right">{stat.kPer9.toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
