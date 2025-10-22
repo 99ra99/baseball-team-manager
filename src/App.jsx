@@ -281,7 +281,7 @@ function App() {
             game.score || '',
             game.result || '',
             '', // 선발투수 (비워둠)
-            game.stadium || '' // 비고란에 경기장 정보
+            game.note || game.stadium || '' // 비고 (콜드승 등)
           ]);
 
           // 경기 데이터 저장
@@ -312,7 +312,7 @@ function App() {
               game.score || '',
               game.result || '',
               '',
-              game.stadium || ''
+              game.note || game.stadium || ''
             ]);
 
             await apiWrite('경기기록!A2:G', gameValues);
