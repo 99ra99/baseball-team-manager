@@ -103,87 +103,141 @@ function App() {
     }
   };
 
-  // 게임원 데이터 가져오기
+  // 게임원 데이터 가져오기 (타자 + 투수)
   const fetchFromGameOne = async () => {
     if (!isMaster) {
       alert('마스터 권한이 필요합니다.');
       return;
     }
 
-    if (!confirm('게임원에서 타자 성적 데이터를 가져오시겠습니까?\n기존 데이터를 덮어씁니다.')) {
+    if (!confirm('게임원에서 타자/투수 성적 데이터를 가져오시겠습니까?\n기존 데이터를 덮어씁니다.')) {
       return;
     }
 
     try {
       setIsLoading(true);
       
-      // 1. 게임원에서 데이터 가져오기
-      const response = await fetch('/api/sheets', {
+      console.log('게임원 크롤링 시작...');
+      
+      // 1. 게임원에서 타자 + 투수 데이터 가져오기
+      const response = await fetch('/api/gameone', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          action: 'fetchGameOne',
-          url: 'http://www.gameone.kr/club/info/ranking/hitter?club_idx=42934&season=2025&kind=5&lig_idx=487&group=45&part=2'
+          action: 'fetchAll',
+          season: '2025'
         })
       });
 
       const result = await response.json();
+      console.log('크롤링 결과:', result);
 
-      if (result.success && result.data && result.data.length > 0) {
-        console.log('가져온 데이터:', result.data);
+      if (result.success && result.batter && result.pitcher) {
+        // === 타자 데이터 처리 ===
+        if (result.batter.length > 0) {
+          console.log(`타자 ${result.batterCount}명 데이터 처리 중...`);
+          
+          // 기존 타자 데이터 클리어
+          await fetch('/api/sheets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              action: 'clear',
+              range: '타자성적!A2:AC100'
+            })
+          });
+
+          // 타자 데이터를 Google Sheets 형식으로 변환
+          const batterValues = result.batter.map(player => [
+            player.name || '',
+            player.avg || '',
+            player.games || '',
+            player.pa || '',
+            player.ab || '',
+            player.r || '',
+            player.h || '',
+            player.single || '',
+            player.double || '',
+            player.triple || '',
+            player.hr || '',
+            player.tb || '',
+            player.rbi || '',
+            player.sb || '',
+            player.cs || '',
+            player.sh || '',
+            player.sf || '',
+            player.bb || '',
+            player.ibb || '',
+            player.hbp || '',
+            player.so || '',
+            player.gdp || '',
+            player.slg || '',
+            player.obp || '',
+            player.sbPct || '',
+            player.multiHit || '',
+            player.ops || '',
+            player.bbk || '',
+            player.xbhh || ''
+          ]);
+
+          // 타자 데이터 저장
+          await apiWrite('타자성적!A2:AC', batterValues);
+          console.log('✅ 타자 데이터 저장 완료');
+        }
+
+        // === 투수 데이터 처리 ===
+        if (result.pitcher.length > 0) {
+          console.log(`투수 ${result.pitcherCount}명 데이터 처리 중...`);
+          
+          // 기존 투수 데이터 클리어
+          await fetch('/api/sheets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              action: 'clear',
+              range: '투수성적!A2:AA100'
+            })
+          });
+
+          // 투수 데이터를 Google Sheets 형식으로 변환
+          const pitcherValues = result.pitcher.map(player => [
+            player.name || '',
+            player.era || '',
+            player.games || '',
+            player.w || '',
+            player.l || '',
+            player.sv || '',
+            player.hld || '',
+            player.wpct || '',
+            player.bf || '',
+            player.ab || '',
+            player.np || '',
+            player.ip || '',
+            player.h || '',
+            player.hr || '',
+            player.sh || '',
+            player.sf || '',
+            player.bb || '',
+            player.ibb || '',
+            player.hbp || '',
+            player.so || '',
+            player.wp || '',
+            player.bk || '',
+            player.r || '',
+            player.er || '',
+            player.whip || '',
+            player.oavg || '',
+            player.kper9 || ''
+          ]);
+
+          // 투수 데이터 저장
+          await apiWrite('투수성적!A2:AA', pitcherValues);
+          console.log('✅ 투수 데이터 저장 완료');
+        }
         
-        // 2. 기존 데이터 클리어
-        await fetch('/api/sheets', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            action: 'clear',
-            range: '타자성적!A2:AC100'
-          })
-        });
-
-        // 3. 데이터를 Google Sheets 형식으로 변환 (전체 29개 컬럼)
-        const values = result.data.map(player => [
-          player.name || '',          // A: 이름
-          player.avg || '',           // B: 타율
-          player.games || '',         // C: 경기
-          player.pa || '',            // D: 타석
-          player.ab || '',            // E: 타수
-          player.r || '',             // F: 득점
-          player.h || '',             // G: 안타
-          player.single || '',        // H: 1루타
-          player.double || '',        // I: 2루타
-          player.triple || '',        // J: 3루타
-          player.hr || '',            // K: 홈런
-          player.tb || '',            // L: 루타
-          player.rbi || '',           // M: 타점
-          player.sb || '',            // N: 도루
-          player.cs || '',            // O: 도실
-          player.sh || '',            // P: 희타
-          player.sf || '',            // Q: 희비
-          player.bb || '',            // R: 볼넷
-          player.ibb || '',           // S: 고의4구
-          player.hbp || '',           // T: 사구
-          player.so || '',            // U: 삼진
-          player.gdp || '',           // V: 병살
-          player.slg || '',           // W: 장타율
-          player.obp || '',           // X: 출루율
-          player.sbPct || '',         // Y: 도루성공률
-          player.multiHit || '',      // Z: 멀티히트
-          player.ops || '',           // AA: OPS
-          player.bbk || '',           // AB: BB/K
-          player.xbhh || ''           // AC: 장타/안타
-        ]);
-
-        console.log('변환된 데이터:', values);
-
-        // 4. Google Sheets에 저장
-        const writeResult = await apiWrite('타자성적!A2:AC', values);
-        console.log('저장 결과:', writeResult);
+        alert(`✅ 성공!\n타자 ${result.batterCount}명, 투수 ${result.pitcherCount}명 데이터를 가져왔습니다!`);
         
-        alert(`✅ ${result.count}명의 선수 데이터를 성공적으로 가져왔습니다!`);
-        
-        // 5. 데이터 새로고침
+        // 데이터 새로고침
         await loadAllData();
       } else {
         alert('❌ 데이터 가져오기 실패: ' + (result.error || '데이터가 없습니다.'));
@@ -658,7 +712,11 @@ function App() {
 
         {/* 투수 성적 탭 */}
         {activeTab === 'pitcher' && (
-          <PitcherStatsPivot pitcherStats={pitcherStats} />
+          <PitcherStatsPivot 
+            pitcherStats={pitcherStats}
+            onFetchGameOne={fetchFromGameOne}
+            isMaster={isMaster}
+          />
         )}
 
         {/* 경기 기록 탭 */}
