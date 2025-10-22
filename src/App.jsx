@@ -110,12 +110,14 @@ function App() {
       return;
     }
 
-    if (!confirm('게임원에서 타자 성적 데이터를 가져오시겠습니까?\n기존 데이터에 추가됩니다.')) {
+    if (!confirm('게임원에서 타자 성적 데이터를 가져오시겠습니까?\n기존 데이터를 덮어씁니다.')) {
       return;
     }
 
     try {
       setIsLoading(true);
+      
+      // 1. 게임원에서 데이터 가져오기
       const response = await fetch('/api/sheets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -127,53 +129,68 @@ function App() {
 
       const result = await response.json();
 
-      if (result.success && result.data) {
-        // 데이터를 Google Sheets 형식으로 변환
+      if (result.success && result.data && result.data.length > 0) {
+        console.log('가져온 데이터:', result.data);
+        
+        // 2. 기존 데이터 클리어
+        await fetch('/api/sheets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            action: 'clear',
+            range: '타자성적!A2:AC100'
+          })
+        });
+
+        // 3. 데이터를 Google Sheets 형식으로 변환 (전체 29개 컬럼)
         const values = result.data.map(player => [
-          player.name,
-          player.avg,
-          player.games,
-          player.pa,
-          player.ab,
-          player.r,
-          player.h,
-          player.single,
-          player.double,
-          player.triple,
-          player.hr,
-          player.tb,
-          player.rbi,
-          player.sb,
-          player.cs,
-          player.sh,
-          player.sf,
-          player.bb,
-          player.ibb,
-          player.hbp,
-          player.so,
-          player.gdp,
-          player.slg,
-          player.obp,
-          player.sbPct,
-          player.multiHit,
-          player.ops,
-          player.bbk,
-          player.xbhh
+          player.name || '',          // A: 이름
+          player.avg || '',           // B: 타율
+          player.games || '',         // C: 경기
+          player.pa || '',            // D: 타석
+          player.ab || '',            // E: 타수
+          player.r || '',             // F: 득점
+          player.h || '',             // G: 안타
+          player.single || '',        // H: 1루타
+          player.double || '',        // I: 2루타
+          player.triple || '',        // J: 3루타
+          player.hr || '',            // K: 홈런
+          player.tb || '',            // L: 루타
+          player.rbi || '',           // M: 타점
+          player.sb || '',            // N: 도루
+          player.cs || '',            // O: 도실
+          player.sh || '',            // P: 희타
+          player.sf || '',            // Q: 희비
+          player.bb || '',            // R: 볼넷
+          player.ibb || '',           // S: 고의4구
+          player.hbp || '',           // T: 사구
+          player.so || '',            // U: 삼진
+          player.gdp || '',           // V: 병살
+          player.slg || '',           // W: 장타율
+          player.obp || '',           // X: 출루율
+          player.sbPct || '',         // Y: 도루성공률
+          player.multiHit || '',      // Z: 멀티히트
+          player.ops || '',           // AA: OPS
+          player.bbk || '',           // AB: BB/K
+          player.xbhh || ''           // AC: 장타/안타
         ]);
 
-        // Google Sheets에 저장
-        await apiWrite('타자성적!A2:AB', values);
+        console.log('변환된 데이터:', values);
+
+        // 4. Google Sheets에 저장
+        const writeResult = await apiWrite('타자성적!A2:AC', values);
+        console.log('저장 결과:', writeResult);
         
-        alert(`${result.count}명의 선수 데이터를 가져왔습니다!`);
+        alert(`✅ ${result.count}명의 선수 데이터를 성공적으로 가져왔습니다!`);
         
-        // 데이터 새로고침
-        loadAllData();
+        // 5. 데이터 새로고침
+        await loadAllData();
       } else {
-        alert('데이터 가져오기 실패: ' + (result.error || '알 수 없는 오류'));
+        alert('❌ 데이터 가져오기 실패: ' + (result.error || '데이터가 없습니다.'));
       }
     } catch (error) {
       console.error('게임원 데이터 가져오기 실패:', error);
-      alert('데이터를 가져오는 중 오류가 발생했습니다.');
+      alert('❌ 데이터를 가져오는 중 오류가 발생했습니다: ' + error.message);
     } finally {
       setIsLoading(false);
     }
