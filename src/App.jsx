@@ -127,11 +127,24 @@ function App() {
       console.log('게임원 크롤링 시작...');
       
       // 1. 게임원에서 데이터 가져오기
+      let action;
+      if (dataType === 'all') {
+        action = 'fetchAll';
+      } else if (dataType === 'batter') {
+        action = 'fetchBatter';
+      } else if (dataType === 'pitcher') {
+        action = 'fetchPitcher';
+      } else if (dataType === 'games') {
+        action = 'fetchGames';
+      } else {
+        action = 'fetchAll'; // 기본값
+      }
+
       const response = await fetch('/api/gameone', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          action: dataType === 'all' ? 'fetchAll' : `fetch${dataType.charAt(0).toUpperCase() + dataType.slice(1)}`,
+          action: action,
           type: dataType
         })
       });
