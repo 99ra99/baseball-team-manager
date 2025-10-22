@@ -206,7 +206,10 @@ export default async function handler(req, res) {
         $('.section_rank table tbody tr').each((index, element) => {
           const cells = $(element).find('td');
           
-          if (cells.length >= 28) {
+          console.log(`행 ${index}: 셀 개수 = ${cells.length}`);
+          
+          // 최소 30개 셀이 있어야 함 (순위 포함)
+          if (cells.length >= 30) {
             // 이름에서 등번호 제거
             const nameWithNumber = $(cells[1]).text().trim();
             const name = nameWithNumber.replace(/\(\d+\)/, '').trim();
@@ -243,9 +246,12 @@ export default async function handler(req, res) {
               xbhh: $(cells[29]).text().trim()
             };
             
+            console.log(`선수 추가: ${name}, 타율: ${player.avg}, OPS: ${player.ops}`);
             players.push(player);
           }
         });
+        
+        console.log(`총 ${players.length}명의 선수 데이터 파싱 완료`);
         
         return res.status(200).json({
           success: true,
@@ -269,6 +275,19 @@ export default async function handler(req, res) {
         range,
         valueInputOption: 'RAW',
         resource: { values },
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: response.data,
+      });
+    }
+
+    // POST - 데이터 클리어
+    if (method === 'POST' && action === 'clear') {
+      const response = await sheets.spreadsheets.values.clear({
+        spreadsheetId,
+        range,
       });
 
       return res.status(200).json({
