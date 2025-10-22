@@ -14,7 +14,7 @@
     "lucide-react": "^0.263.1",
     "googleapis": "^128.0.0",
     "bcryptjs": "^2.4.3",
-    "html2canvas": "^1.4.1"    // ⭐ 추가됨!
+    "html2canvas": "^1.4.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
