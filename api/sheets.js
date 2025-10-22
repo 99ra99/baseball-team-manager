@@ -197,7 +197,11 @@ export default async function handler(req, res) {
       try {
         console.log('게임원 크롤링 시작:', url);
         
-        const response = await fetch(url);
+        // www 제거 및 https 시도
+        const cleanUrl = url.replace('http://www.gameone.kr', 'https://gameone.kr');
+        console.log('수정된 URL:', cleanUrl);
+        
+        const response = await fetch(cleanUrl);
         const html = await response.text();
         
         console.log('HTML 가져오기 성공');
