@@ -103,12 +103,257 @@ function App() {
     }
   };
 
-  // 게임원 데이터 가져오기 (타자 + 투수 + 경기)
+  // 게임원 데이터 가져오기 (타자 + 투수 + 경기) fetchFromGameOne 함수 교체
   const fetchFromGameOne = async (dataType = 'all') => {
-    if (!isMaster) {
-      alert('마스터 권한이 필요합니다.');
-      return;
+  if (!isMaster) {
+    alert('마스터 권한이 필요합니다.');
+    return;
+  }
+
+  const typeLabel = {
+    all: '타자/투수',
+    batter: '타자',
+    pitcher: '투수'
+  };
+
+  if (!confirm(`게임원에서 ${typeLabel[dataType]} 데이터를 가져오시겠습니까?\n기존 데이터를 덮어씁니다.`)) {
+    return;
+  }
+
+  try {
+    setIsLoading(true);
+    console.log('🎯 게임원 크롤링 시작...');
+
+    let successMessages = [];
+
+    // === 타자 데이터 크롤링 ===
+    if (dataType === 'all' || dataType === 'batter') {
+      console.log('타자 데이터 크롤링 시작...');
+      
+      const batterUrl = 'http://gameone.kr/club/info/ranking/hitter?club_idx=42934&season=2025&kind=5&lig_idx=487&group=45&part=2';
+      const proxyUrl = 'https://api.allorigins.win/raw?url=';
+      
+      const response = await fetch(proxyUrl + encodeURIComponent(batterUrl));
+      const html = await response.text();
+      
+      // 마크다운 테이블 파싱
+      const batters = [];
+      const lines = html.split('\n');
+      let inTable = false;
+      let headerPassed = false;
+      
+      for (const line of lines) {
+        if (line.includes('|') && line.split('|').length > 10) {
+          
+          if (line.includes('순위') && line.includes('이름')) {
+            inTable = true;
+            continue;
+          }
+          
+          if (line.includes('---')) {
+            headerPassed = true;
+            continue;
+          }
+          
+          if (inTable && headerPassed) {
+            const cells = line.split('|').map(cell => cell.trim()).filter(cell => cell);
+            
+            if (cells.length >= 29) {
+              const nameWithNumber = cells[1];
+              const name = nameWithNumber.replace(/\(\d+\)/, '').trim();
+              
+              batters.push({
+                name: name,
+                avg: cells[2] || '0',
+                games: cells[3] || '0',
+                pa: cells[4] || '0',
+                ab: cells[5] || '0',
+                r: cells[6] || '0',
+                h: cells[7] || '0',
+                single: cells[8] || '0',
+                double: cells[9] || '0',
+                triple: cells[10] || '0',
+                hr: cells[11] || '0',
+                tb: cells[12] || '0',
+                rbi: cells[13] || '0',
+                sb: cells[14] || '0',
+                cs: cells[15] || '0',
+                sh: cells[16] || '0',
+                sf: cells[17] || '0',
+                bb: cells[18] || '0',
+                ibb: cells[19] || '0',
+                hbp: cells[20] || '0',
+                so: cells[21] || '0',
+                gdp: cells[22] || '0',
+                slg: cells[23] || '0',
+                obp: cells[24] || '0',
+                sbPct: cells[25] || '0',
+                multiHit: cells[26] || '0',
+                ops: cells[27] || '0',
+                bbk: cells[28] || '0',
+                xbhh: cells.length > 29 ? cells[29] : '0'
+              });
+            }
+          }
+          
+          if (inTable && headerPassed && cells.length < 10) {
+            break;
+          }
+        }
+      }
+      
+      console.log(`✅ 타자 ${batters.length}명 파싱 완료`);
+      
+      // Google Sheets에 저장
+      if (batters.length > 0) {
+        await fetch('/api/sheets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            action: 'clear',
+            range: '타자성적!A2:AC100'
+          })
+        });
+
+        const batterValues = batters.map(player => [
+          player.name, player.avg, player.games, player.pa, player.ab,
+          player.r, player.h, player.single, player.double, player.triple,
+          player.hr, player.tb, player.rbi, player.sb, player.cs,
+          player.sh, player.sf, player.bb, player.ibb, player.hbp,
+          player.so, player.gdp, player.slg, player.obp, player.sbPct,
+          player.multiHit, player.ops, player.bbk, player.xbhh
+        ]);
+
+        await apiWrite('타자성적!A2:AC', batterValues);
+        console.log('✅ 타자 데이터 저장 완료');
+        successMessages.push(`타자 ${batters.length}명`);
+      }
     }
+
+    // === 투수 데이터 크롤링 ===
+    if (dataType === 'all' || dataType === 'pitcher') {
+      console.log('투수 데이터 크롤링 시작...');
+      
+      const pitcherUrl = 'http://gameone.kr/club/info/ranking/pitcher?club_idx=42934&season=2025&kind=5&lig_idx=487&group=45&part=2';
+      const proxyUrl = 'https://api.allorigins.win/raw?url=';
+      
+      const response = await fetch(proxyUrl + encodeURIComponent(pitcherUrl));
+      const html = await response.text();
+      
+      // 마크다운 테이블 파싱
+      const pitchers = [];
+      const lines = html.split('\n');
+      let inTable = false;
+      let headerPassed = false;
+      
+      for (const line of lines) {
+        if (line.includes('|') && line.split('|').length > 10) {
+          
+          if (line.includes('순위') && line.includes('이름')) {
+            inTable = true;
+            continue;
+          }
+          
+          if (line.includes('---')) {
+            headerPassed = true;
+            continue;
+          }
+          
+          if (inTable && headerPassed) {
+            const cells = line.split('|').map(cell => cell.trim()).filter(cell => cell);
+            
+            if (cells.length >= 27) {
+              const nameWithNumber = cells[1];
+              const name = nameWithNumber.replace(/\(\d+\)/, '').trim();
+              
+              pitchers.push({
+                name: name,
+                era: cells[2] || '0',
+                games: cells[3] || '0',
+                w: cells[4] || '0',
+                l: cells[5] || '0',
+                sv: cells[6] || '0',
+                hld: cells[7] || '0',
+                wpct: cells[8] || '0',
+                bf: cells[9] || '0',
+                ab: cells[10] || '0',
+                np: cells[11] || '0',
+                ip: cells[12] || '0',
+                h: cells[13] || '0',
+                hr: cells[14] || '0',
+                sh: cells[15] || '0',
+                sf: cells[16] || '0',
+                bb: cells[17] || '0',
+                ibb: cells[18] || '0',
+                hbp: cells[19] || '0',
+                so: cells[20] || '0',
+                wp: cells[21] || '0',
+                bk: cells[22] || '0',
+                r: cells[23] || '0',
+                er: cells[24] || '0',
+                whip: cells[25] || '0',
+                oavg: cells[26] || '0',
+                kper9: cells.length > 27 ? cells[27] : '0'
+              });
+            }
+          }
+          
+          if (inTable && headerPassed && cells.length < 10) {
+            break;
+          }
+        }
+      }
+      
+      console.log(`✅ 투수 ${pitchers.length}명 파싱 완료`);
+      
+      // Google Sheets에 저장
+      if (pitchers.length > 0) {
+        await fetch('/api/sheets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            action: 'clear',
+            range: '투수성적!A2:AA100'
+          })
+        });
+
+        const pitcherValues = pitchers.map(player => [
+          player.name, player.era, player.games, player.w, player.l,
+          player.sv, player.hld, player.wpct, player.bf, player.ab,
+          player.np, player.ip, player.h, player.hr, player.sh,
+          player.sf, player.bb, player.ibb, player.hbp, player.so,
+          player.wp, player.bk, player.r, player.er, player.whip,
+          player.oavg, player.kper9
+        ]);
+
+        await apiWrite('투수성적!A2:AA', pitcherValues);
+        console.log('✅ 투수 데이터 저장 완료');
+        successMessages.push(`투수 ${pitchers.length}명`);
+      }
+    }
+
+    // 성공 메시지
+    alert(`데이터 가져오기 완료!\n${successMessages.join(', ')}`);
+    
+    // 데이터 새로고침
+    await loadAllData();
+    
+  } catch (error) {
+    console.error('💥 에러 발생:', error);
+    alert(`에러: ${error.message}`);
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+
+
+
+
+
+
+
+
 
     const typeLabel = {
       all: '타자/투수 성적 및 경기 기록',
@@ -1307,3 +1552,4 @@ function App() {
 }
 
 export default App;
+
