@@ -29,63 +29,76 @@ async function fetchGameResults() {
     
     const games = [];
     
-    // 경기 결과 테이블 파싱 (여러 셀렉터 시도)
-    let foundGames = false;
-    
-    // 첫 번째 시도: .tbl_schedule
-    $('.tbl_schedule tbody tr').each((index, element) => {
-      const cells = $(element).find('td');
-      
-      if (cells.length >= 5) {
-        const dateText = $(cells[0]).text().trim();
-        const opponent = $(cells[1]).text().trim() || $(cells[2]).text().trim();
-        const score = $(cells[2]).text().trim() || $(cells[3]).text().trim();
-        const result = $(cells[3]).text().trim() || $(cells[4]).text().trim();
-        const stadium = $(cells[4]).text().trim() || $(cells[5]).text().trim() || '';
+    // 경기 결과 파싱 - class="scon_players" 리스트 기준
+    $('.scon_players').each((index, element) => {
+      try {
+        // 1. 일시(날짜) 추출
+        const dateText = $(element).find('td:first-child').text().trim();
         
+        // 2. 게임 정보 추출
+        const gameCell = $(element).find('td').eq(3); // 4번째 td (게임 정보)
+        
+        // 팀 정보 추출
+        const team1Element = gameCell.find('.game.team1');
+        const team2Element = gameCell.find('.team2');
+        
+        const team1Name = team1Element.find('a').text().trim() || team1Element.text().replace(/\d+/g, '').trim();
+        const team2Name = team2Element.find('a').text().trim() || team2Element.text().replace(/\d+/g, '').trim();
+        
+        // 스코어 추출
+        const team1Score = parseInt(team1Element.find('.score').text().trim()) || 0;
+        const team2Score = parseInt(team2Element.find('.score').text().trim()) || 0;
+        
+        // 3. 상대팀 결정 (지존 리틀 베이스볼 클럽이 아닌 팀)
+        let opponent = '';
+        let homeAway = '';
+        let ourScore = 0;
+        let opponentScore = 0;
+        
+        if (team1Name.includes('지존') || team1Name.includes('리틀') || team1Name.includes('베이스볼')) {
+          // 우리팀이 team1 (홈)
+          opponent = team2Name;
+          homeAway = '홈';
+          ourScore = team1Score;
+          opponentScore = team2Score;
+        } else if (team2Name.includes('지존') || team2Name.includes('리틀') || team2Name.includes('베이스볼')) {
+          // 우리팀이 team2 (원정)
+          opponent = team1Name;
+          homeAway = '원정';
+          ourScore = team2Score;
+          opponentScore = team1Score;
+        } else {
+          // 팀 이름이 명확하지 않은 경우 스킵
+          return;
+        }
+        
+        // 4. 결과 계산 (우리 점수 - 상대 점수)
+        const scoreDiff = ourScore - opponentScore;
+        const result = `${ourScore}-${opponentScore}`;
+        
+        // 5. 비고 (콜드승 체크)
+        const coldWin = gameCell.find('.exp_win').text().includes('콜드승') ? '콜드승' : '';
+        
+        // 날짜와 상대팀이 있는 경우만 추가
         if (dateText && opponent) {
           games.push({
             date: dateText,
-            opponent: opponent,
-            score: score,
-            result: result,
-            stadium: stadium,
-            homeAway: stadium.includes('홈') ? '홈' : '원정'
+            opponent: opponent.replace(/^\s*\d+\s*/, ''), // 앞의 숫자 제거
+            homeAway: homeAway,
+            score: result,
+            result: scoreDiff > 0 ? '승' : scoreDiff < 0 ? '패' : '무',
+            note: coldWin,
+            stadium: '', // 경기장 정보는 별도 추출 필요시 추가
+            ourScore: ourScore,
+            opponentScore: opponentScore
           });
           
-          console.log(`경기 추가: ${dateText} vs ${opponent} - ${score} (${result})`);
-          foundGames = true;
+          console.log(`경기 추가: ${dateText} ${homeAway} vs ${opponent} - ${result} (${scoreDiff > 0 ? '승' : scoreDiff < 0 ? '패' : '무'}${coldWin ? ' ' + coldWin : ''})`);
         }
+      } catch (error) {
+        console.error(`경기 ${index} 파싱 오류:`, error);
       }
     });
-    
-    // 두 번째 시도: 일반 테이블
-    if (!foundGames) {
-      $('table tbody tr').each((index, element) => {
-        const cells = $(element).find('td');
-        
-        if (cells.length >= 5) {
-          const dateText = $(cells[0]).text().trim();
-          const opponent = $(cells[1]).text().trim() || $(cells[2]).text().trim();
-          const score = $(cells[2]).text().trim() || $(cells[3]).text().trim();
-          const result = $(cells[3]).text().trim() || $(cells[4]).text().trim();
-          
-          if (dateText && opponent && dateText.match(/\d{4}-\d{2}-\d{2}|\d{2}\.\d{2}/)) {
-            games.push({
-              date: dateText,
-              opponent: opponent,
-              score: score,
-              result: result,
-              stadium: '',
-              homeAway: '홈'
-            });
-            
-            console.log(`경기 추가: ${dateText} vs ${opponent} - ${score} (${result})`);
-            foundGames = true;
-          }
-        }
-      });
-    }
     
     console.log(`경기 ${games.length}개 크롤링 완료`);
     return games;
