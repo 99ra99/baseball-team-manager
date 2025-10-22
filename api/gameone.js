@@ -1,8 +1,8 @@
 import fetch from 'node-fetch';
 
 const URLS = {
-  batter: 'https://gameone.kr/club/info/ranking/hitter?club_idx=42934&season=2025&kind=5&lig_idx=487&group=45&part=2',
-  pitcher: 'https://gameone.kr/club/info/ranking/pitcher?club_idx=42934&season=2025&kind=5&lig_idx=487&group=45&part=2'
+  batter: 'http://gameone.kr/club/info/ranking/hitter?club_idx=42934&season=2025&kind=5&lig_idx=487&group=45&part=2',
+  pitcher: 'http://gameone.kr/club/info/ranking/pitcher?club_idx=42934&season=2025&kind=5&lig_idx=487&group=45&part=2'
 };
 
 /**
