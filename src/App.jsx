@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Users, TrendingUp, TrendingDown, Calendar, Clipboard, LogOut, Shield, Eye, UserCog } from 'lucide-react';
 import Login from './components/Login';
 import UserManagement from './components/UserManagement';
+import BatterStatsPivot from './components/BatterStatsPivot';
+import PitcherStatsPivot from './components/PitcherStatsPivot';
 
 function App() {
   // 인증 상태
@@ -554,80 +556,12 @@ function App() {
 
         {/* 타자 성적 탭 */}
         {activeTab === 'batter' && (
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6">타자 성적</h2>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">이름</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">타율</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">OPS</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">경기</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">안타</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">홈런</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">타점</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">장타율</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">출루율</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {batterStats.map((stat) => (
-                    <tr key={stat.id}>
-                      <td className="px-3 py-2 font-medium">{stat.name}</td>
-                      <td className="px-3 py-2">{stat.avg}</td>
-                      <td className="px-3 py-2">{stat.ops}</td>
-                      <td className="px-3 py-2">{stat.games}</td>
-                      <td className="px-3 py-2">{stat.h}</td>
-                      <td className="px-3 py-2">{stat.hr}</td>
-                      <td className="px-3 py-2">{stat.rbi}</td>
-                      <td className="px-3 py-2">{stat.slg}</td>
-                      <td className="px-3 py-2">{stat.obp}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <BatterStatsPivot batterStats={batterStats} />
         )}
 
         {/* 투수 성적 탭 */}
         {activeTab === 'pitcher' && (
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6">투수 성적</h2>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">이름</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">방어율</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">WHIP</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">경기</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">승</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">패</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">세이브</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">이닝</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">탈삼진</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {pitcherStats.map((stat) => (
-                    <tr key={stat.id}>
-                      <td className="px-3 py-2 font-medium">{stat.name}</td>
-                      <td className="px-3 py-2">{stat.era}</td>
-                      <td className="px-3 py-2">{stat.whip}</td>
-                      <td className="px-3 py-2">{stat.games}</td>
-                      <td className="px-3 py-2">{stat.w}</td>
-                      <td className="px-3 py-2">{stat.l}</td>
-                      <td className="px-3 py-2">{stat.sv}</td>
-                      <td className="px-3 py-2">{stat.ip}</td>
-                      <td className="px-3 py-2">{stat.so}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <PitcherStatsPivot pitcherStats={pitcherStats} />
         )}
 
         {/* 경기 기록 탭 */}
