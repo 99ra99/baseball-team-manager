@@ -17,123 +17,6 @@ const getAuth = () => {
 
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 
-// 컬럼 값을 안전하게 변환
-const sanitizeValue = (value) => {
-  if (value === null || value === undefined || value === '') return '';
-  if (typeof value === 'object') return JSON.stringify(value);
-  return String(value);
-};
-
-/**
- * 시트 데이터 읽기
- */
-async function readSheet(sheetName, range) {
-  try {
-    console.log(`시트 읽기: ${sheetName}!${range}`);
-    
-    const auth = getAuth();
-    const sheets = google.sheets({ version: 'v4', auth });
-    
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `${sheetName}!${range}`,
-    });
-    
-    console.log(`읽기 성공: ${response.data.values?.length || 0}행`);
-    return response.data.values || [];
-  } catch (error) {
-    console.error('시트 읽기 실패:', error.message);
-    throw error;
-  }
-}
-
-/**
- * 시트 데이터 쓰기
- */
-async function writeSheet(sheetName, range, values) {
-  try {
-    console.log(`시트 쓰기: ${sheetName}!${range}, ${values.length}행`);
-    
-    // 데이터 정리
-    const sanitizedValues = values.map(row => 
-      row.map(cell => sanitizeValue(cell))
-    );
-    
-    const auth = getAuth();
-    const sheets = google.sheets({ version: 'v4', auth });
-    
-    const response = await sheets.spreadsheets.values.update({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `${sheetName}!${range}`,
-      valueInputOption: 'USER_ENTERED',
-      requestBody: {
-        values: sanitizedValues,
-      },
-    });
-    
-    console.log(`쓰기 성공: ${response.data.updatedCells}개 셀 업데이트`);
-    return response.data;
-  } catch (error) {
-    console.error('시트 쓰기 실패:', error.message);
-    throw error;
-  }
-}
-
-/**
- * 시트 데이터 추가 (append)
- */
-async function appendSheet(sheetName, values) {
-  try {
-    console.log(`시트 추가: ${sheetName}, ${values.length}행`);
-    
-    // 데이터 정리
-    const sanitizedValues = values.map(row => 
-      row.map(cell => sanitizeValue(cell))
-    );
-    
-    const auth = getAuth();
-    const sheets = google.sheets({ version: 'v4', auth });
-    
-    const response = await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `${sheetName}!A:A`,
-      valueInputOption: 'USER_ENTERED',
-      requestBody: {
-        values: sanitizedValues,
-      },
-    });
-    
-    console.log(`추가 성공: ${response.data.updates.updatedRows}행 추가`);
-    return response.data;
-  } catch (error) {
-    console.error('시트 추가 실패:', error.message);
-    throw error;
-  }
-}
-
-/**
- * 시트 데이터 지우기
- */
-async function clearSheet(sheetName, range) {
-  try {
-    console.log(`시트 지우기: ${sheetName}!${range}`);
-    
-    const auth = getAuth();
-    const sheets = google.sheets({ version: 'v4', auth });
-    
-    const response = await sheets.spreadsheets.values.clear({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `${sheetName}!${range}`,
-    });
-    
-    console.log('지우기 성공');
-    return response.data;
-  } catch (error) {
-    console.error('시트 지우기 실패:', error.message);
-    throw error;
-  }
-}
-
 /**
  * API 핸들러
  */
@@ -150,65 +33,118 @@ export default async function handler(req, res) {
   }
 
   try {
-    console.log(`Sheets API 호출: ${req.method} ${req.url}`);
+    console.log(`=== Sheets API 호출 시작 ===`);
+    console.log('Method:', req.method);
+    console.log('Query:', JSON.stringify(req.query));
     console.log('Body:', JSON.stringify(req.body));
 
-    const { action, sheetName, range, values } = req.body || {};
+    // req.query와 req.body를 모두 확인 (기존 코드 호환)
+    const params = { ...req.query, ...req.body };
+    const { action, sheetName, range, values } = params;
 
-    // 필수 파라미터 검증
+    console.log('Parsed params:', { action, sheetName, range, valuesCount: values?.length });
+
+    // action이 없으면 에러
     if (!action) {
+      console.error('❌ action 파라미터 없음');
       return res.status(400).json({ 
         error: 'action 파라미터가 필요합니다',
-        received: { action, sheetName, range }
+        receivedParams: Object.keys(params)
       });
     }
 
-    if (!sheetName) {
-      return res.status(400).json({ 
-        error: 'sheetName 파라미터가 필요합니다',
-        received: { action, sheetName, range }
-      });
-    }
+    const auth = getAuth();
+    const sheets = google.sheets({ version: 'v4', auth });
 
     let result;
 
-    switch (action) {
-      case 'read':
-        if (!range) {
-          return res.status(400).json({ error: 'range 파라미터가 필요합니다' });
-        }
-        result = await readSheet(sheetName, range);
-        break;
-
-      case 'write':
-        if (!range || !values) {
-          return res.status(400).json({ error: 'range와 values 파라미터가 필요합니다' });
-        }
-        result = await writeSheet(sheetName, range, values);
-        break;
-
-      case 'append':
-        if (!values) {
-          return res.status(400).json({ error: 'values 파라미터가 필요합니다' });
-        }
-        result = await appendSheet(sheetName, values);
-        break;
-
-      case 'clear':
-        if (!range) {
-          return res.status(400).json({ error: 'range 파라미터가 필요합니다' });
-        }
-        result = await clearSheet(sheetName, range);
-        break;
-
-      default:
-        return res.status(400).json({ 
-          error: '유효하지 않은 action입니다',
-          validActions: ['read', 'write', 'append', 'clear']
-        });
+    // READ
+    if (action === 'read') {
+      console.log(`📖 READ: ${sheetName}!${range}`);
+      
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${sheetName}!${range}`,
+      });
+      
+      result = response.data.values || [];
+      console.log(`✅ 읽기 완료: ${result.length}행`);
+    }
+    
+    // WRITE
+    else if (action === 'write') {
+      console.log(`✍️ WRITE: ${sheetName}!${range}, ${values?.length}행`);
+      
+      // 데이터 정리
+      const cleanValues = values.map(row => 
+        row.map(cell => {
+          if (cell === null || cell === undefined) return '';
+          if (typeof cell === 'object') return JSON.stringify(cell);
+          return String(cell);
+        })
+      );
+      
+      const response = await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${sheetName}!${range}`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: {
+          values: cleanValues,
+        },
+      });
+      
+      result = response.data;
+      console.log(`✅ 쓰기 완료: ${response.data.updatedCells}개 셀`);
+    }
+    
+    // APPEND
+    else if (action === 'append') {
+      console.log(`➕ APPEND: ${sheetName}, ${values?.length}행`);
+      
+      const cleanValues = values.map(row => 
+        row.map(cell => {
+          if (cell === null || cell === undefined) return '';
+          if (typeof cell === 'object') return JSON.stringify(cell);
+          return String(cell);
+        })
+      );
+      
+      const response = await sheets.spreadsheets.values.append({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${sheetName}!A:A`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: {
+          values: cleanValues,
+        },
+      });
+      
+      result = response.data;
+      console.log(`✅ 추가 완료: ${response.data.updates.updatedRows}행`);
+    }
+    
+    // CLEAR
+    else if (action === 'clear') {
+      console.log(`🗑️ CLEAR: ${sheetName}!${range}`);
+      
+      const response = await sheets.spreadsheets.values.clear({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${sheetName}!${range}`,
+      });
+      
+      result = response.data;
+      console.log(`✅ 지우기 완료`);
+    }
+    
+    else {
+      console.error('❌ 유효하지 않은 action:', action);
+      return res.status(400).json({ 
+        error: '유효하지 않은 action입니다',
+        validActions: ['read', 'write', 'append', 'clear'],
+        received: action
+      });
     }
 
-    console.log('API 성공');
+    console.log('=== API 성공 ===');
     res.status(200).json({
       success: true,
       data: result,
@@ -216,13 +152,14 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error('API 에러:', error);
+    console.error('=== API 에러 ===');
+    console.error('Error:', error.message);
+    console.error('Stack:', error.stack);
     
-    // 상세한 에러 정보 반환
     res.status(500).json({
       success: false,
       error: error.message,
-      details: error.stack,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
       timestamp: new Date().toISOString()
     });
   }
