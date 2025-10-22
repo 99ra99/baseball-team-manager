@@ -29,29 +29,63 @@ async function fetchGameResults() {
     
     const games = [];
     
-    // 경기 결과 테이블 파싱
+    // 경기 결과 테이블 파싱 (여러 셀렉터 시도)
+    let foundGames = false;
+    
+    // 첫 번째 시도: .tbl_schedule
     $('.tbl_schedule tbody tr').each((index, element) => {
       const cells = $(element).find('td');
       
-      if (cells.length >= 7) {
+      if (cells.length >= 5) {
         const dateText = $(cells[0]).text().trim();
-        const opponent = $(cells[2]).find('.team_name').text().trim();
-        const score = $(cells[3]).text().trim();
-        const result = $(cells[4]).text().trim();
-        const stadium = $(cells[5]).text().trim();
+        const opponent = $(cells[1]).text().trim() || $(cells[2]).text().trim();
+        const score = $(cells[2]).text().trim() || $(cells[3]).text().trim();
+        const result = $(cells[3]).text().trim() || $(cells[4]).text().trim();
+        const stadium = $(cells[4]).text().trim() || $(cells[5]).text().trim() || '';
         
-        games.push({
-          date: dateText,
-          opponent: opponent,
-          score: score,
-          result: result,
-          stadium: stadium,
-          homeAway: stadium.includes('홈') ? '홈' : '원정'
-        });
-        
-        console.log(`경기 추가: ${dateText} vs ${opponent} - ${score} (${result})`);
+        if (dateText && opponent) {
+          games.push({
+            date: dateText,
+            opponent: opponent,
+            score: score,
+            result: result,
+            stadium: stadium,
+            homeAway: stadium.includes('홈') ? '홈' : '원정'
+          });
+          
+          console.log(`경기 추가: ${dateText} vs ${opponent} - ${score} (${result})`);
+          foundGames = true;
+        }
       }
     });
+    
+    // 두 번째 시도: 일반 테이블
+    if (!foundGames) {
+      $('table tbody tr').each((index, element) => {
+        const cells = $(element).find('td');
+        
+        if (cells.length >= 5) {
+          const dateText = $(cells[0]).text().trim();
+          const opponent = $(cells[1]).text().trim() || $(cells[2]).text().trim();
+          const score = $(cells[2]).text().trim() || $(cells[3]).text().trim();
+          const result = $(cells[3]).text().trim() || $(cells[4]).text().trim();
+          
+          if (dateText && opponent && dateText.match(/\d{4}-\d{2}-\d{2}|\d{2}\.\d{2}/)) {
+            games.push({
+              date: dateText,
+              opponent: opponent,
+              score: score,
+              result: result,
+              stadium: '',
+              homeAway: '홈'
+            });
+            
+            console.log(`경기 추가: ${dateText} vs ${opponent} - ${score} (${result})`);
+            foundGames = true;
+          }
+        }
+      });
+    }
     
     console.log(`경기 ${games.length}개 크롤링 완료`);
     return games;
@@ -77,13 +111,16 @@ async function fetchBatterRanking() {
     
     const players = [];
     
-    // 테이블 파싱
-    $('.section_rank table tbody tr').each((index, element) => {
+    // 테이블 파싱 (안전한 방식)
+    $('.section_rank table tbody tr, table tbody tr').each((index, element) => {
       const cells = $(element).find('td');
       
       if (cells.length >= 29) {
         const nameWithNumber = $(cells[1]).text().trim();
         const name = nameWithNumber.replace(/\(\d+\)/, '').trim();
+        
+        // 이름이 비어있으면 스킵
+        if (!name) return;
         
         const player = {
           name: name,
@@ -146,13 +183,16 @@ async function fetchPitcherRanking() {
     
     const players = [];
     
-    // 테이블 파싱
-    $('.section_rank table tbody tr').each((index, element) => {
+    // 테이블 파싱 (안전한 방식)
+    $('.section_rank table tbody tr, table tbody tr').each((index, element) => {
       const cells = $(element).find('td');
       
       if (cells.length >= 27) {
         const nameWithNumber = $(cells[1]).text().trim();
         const name = nameWithNumber.replace(/\(\d+\)/, '').trim();
+        
+        // 이름이 비어있으면 스킵
+        if (!name) return;
         
         const player = {
           name: name,
@@ -207,6 +247,15 @@ export default async function handler(req, res) {
     const { action, type } = req.body || req.query;
 
     console.log('게임원 크롤링 요청:', { action, type });
+
+    // 액션 유효성 검사
+    const validActions = ['fetchBatter', 'fetchPitcher', 'fetchGames', 'fetchAll'];
+    if (!validActions.includes(action)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid action: ${action}. Valid actions: ${validActions.join(', ')}`
+      });
+    }
 
     // 타자 랭킹
     if (action === 'fetchBatter' || type === 'batter') {
