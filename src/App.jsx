@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, TrendingUp, TrendingDown, Calendar, Clipboard, LogOut, Shield, Eye, UserCog } from 'lucide-react';
+import { Users, TrendingUp, TrendingDown, Calendar, Clipboard, LogOut, Shield, Eye, UserCog, RefreshCw } from 'lucide-react';
 import Login from './components/Login';
 import UserManagement from './components/UserManagement';
 import BatterStatsPivot from './components/BatterStatsPivot';
@@ -103,14 +103,21 @@ function App() {
     }
   };
 
-  // 게임원 데이터 가져오기 (타자 + 투수)
-  const fetchFromGameOne = async () => {
+  // 게임원 데이터 가져오기 (타자 + 투수 + 경기)
+  const fetchFromGameOne = async (dataType = 'all') => {
     if (!isMaster) {
       alert('마스터 권한이 필요합니다.');
       return;
     }
 
-    if (!confirm('게임원에서 타자/투수 성적 데이터를 가져오시겠습니까?\n기존 데이터를 덮어씁니다.')) {
+    const typeLabel = {
+      all: '타자/투수 성적 및 경기 기록',
+      batter: '타자 성적',
+      pitcher: '투수 성적', 
+      games: '경기 기록'
+    };
+
+    if (!confirm(`게임원에서 ${typeLabel[dataType]} 데이터를 가져오시겠습니까?\n기존 데이터를 덮어씁니다.`)) {
       return;
     }
 
@@ -119,22 +126,24 @@ function App() {
       
       console.log('게임원 크롤링 시작...');
       
-      // 1. 게임원에서 타자 + 투수 데이터 가져오기
+      // 1. 게임원에서 데이터 가져오기
       const response = await fetch('/api/gameone', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          action: 'fetchAll',
-          season: '2025'
+          action: dataType === 'all' ? 'fetchAll' : `fetch${dataType.charAt(0).toUpperCase() + dataType.slice(1)}`,
+          type: dataType
         })
       });
 
       const result = await response.json();
       console.log('크롤링 결과:', result);
 
-      if (result.success && result.batter && result.pitcher) {
+      if (result.success) {
+        let successMessages = [];
+        
         // === 타자 데이터 처리 ===
-        if (result.batter.length > 0) {
+        if (result.batter && result.batter.length > 0) {
           console.log(`타자 ${result.batterCount}명 데이터 처리 중...`);
           
           // 기존 타자 데이터 클리어
@@ -183,10 +192,11 @@ function App() {
           // 타자 데이터 저장
           await apiWrite('타자성적!A2:AC', batterValues);
           console.log('✅ 타자 데이터 저장 완료');
+          successMessages.push(`타자 ${result.batterCount}명`);
         }
 
         // === 투수 데이터 처리 ===
-        if (result.pitcher.length > 0) {
+        if (result.pitcher && result.pitcher.length > 0) {
           console.log(`투수 ${result.pitcherCount}명 데이터 처리 중...`);
           
           // 기존 투수 데이터 클리어
@@ -233,9 +243,73 @@ function App() {
           // 투수 데이터 저장
           await apiWrite('투수성적!A2:AA', pitcherValues);
           console.log('✅ 투수 데이터 저장 완료');
+          successMessages.push(`투수 ${result.pitcherCount}명`);
+        }
+
+        // === 경기 데이터 처리 ===
+        if (result.games && result.games.length > 0) {
+          console.log(`경기 ${result.gamesCount}개 데이터 처리 중...`);
+          
+          // 기존 경기 데이터 클리어
+          await fetch('/api/sheets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              action: 'clear',
+              range: '경기기록!A2:G100'
+            })
+          });
+
+          // 경기 데이터를 Google Sheets 형식으로 변환
+          const gameValues = result.games.map(game => [
+            game.date || '',
+            game.opponent || '',
+            game.homeAway || '',
+            game.score || '',
+            game.result || '',
+            '', // 선발투수 (비워둠)
+            game.stadium || '' // 비고란에 경기장 정보
+          ]);
+
+          // 경기 데이터 저장
+          await apiWrite('경기기록!A2:G', gameValues);
+          console.log('✅ 경기 데이터 저장 완료');
+          successMessages.push(`경기 ${result.gamesCount}개`);
+        }
+
+        // 단일 데이터 타입 처리 (개별 가져오기)
+        if (result.data) {
+          if (dataType === 'games') {
+            // 경기 데이터만 가져온 경우
+            console.log(`경기 ${result.count}개 데이터 처리 중...`);
+            
+            await fetch('/api/sheets', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                action: 'clear',
+                range: '경기기록!A2:G100'
+              })
+            });
+
+            const gameValues = result.data.map(game => [
+              game.date || '',
+              game.opponent || '',
+              game.homeAway || '',
+              game.score || '',
+              game.result || '',
+              '',
+              game.stadium || ''
+            ]);
+
+            await apiWrite('경기기록!A2:G', gameValues);
+            successMessages.push(`경기 ${result.count}개`);
+          }
         }
         
-        alert(`✅ 성공!\n타자 ${result.batterCount}명, 투수 ${result.pitcherCount}명 데이터를 가져왔습니다!`);
+        if (successMessages.length > 0) {
+          alert(`✅ 성공!\n${successMessages.join(', ')} 데이터를 가져왔습니다!`);
+        }
         
         // 데이터 새로고침
         await loadAllData();
@@ -726,6 +800,13 @@ function App() {
               <h2 className="text-2xl font-bold text-gray-800">경기 기록</h2>
               {isMaster && (
                 <div className="flex gap-2">
+                  <button
+                    onClick={() => fetchFromGameOne('games')}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    게임원에서 가져오기
+                  </button>
                   <button
                     onClick={() => setGames([...games, { id: Date.now(), date: '', opponent: '', homeAway: '홈', score: '', result: '승', starter: '', note: '' }])}
                     className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
