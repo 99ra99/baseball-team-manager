@@ -291,8 +291,104 @@ function App() {
         }
 
         // 단일 데이터 타입 처리 (개별 가져오기)
-        if (result.data) {
-          if (dataType === 'games') {
+        if (result.data && result.type) {
+          if (dataType === 'batter' || result.type === 'batter') {
+            // 타자 데이터만 가져온 경우
+            console.log(`타자 ${result.count}명 데이터 처리 중...`);
+            
+            await fetch('/api/sheets', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                action: 'clear',
+                range: '타자성적!A2:AC100'
+              })
+            });
+
+            const batterValues = result.data.map(player => [
+              player.name || '',
+              player.avg || '',
+              player.games || '',
+              player.pa || '',
+              player.ab || '',
+              player.r || '',
+              player.h || '',
+              player.single || '',
+              player.double || '',
+              player.triple || '',
+              player.hr || '',
+              player.tb || '',
+              player.rbi || '',
+              player.sb || '',
+              player.cs || '',
+              player.sh || '',
+              player.sf || '',
+              player.bb || '',
+              player.ibb || '',
+              player.hbp || '',
+              player.so || '',
+              player.gdp || '',
+              player.slg || '',
+              player.obp || '',
+              player.sbPct || '',
+              player.multiHit || '',
+              player.ops || '',
+              player.bbk || '',
+              player.xbhh || ''
+            ]);
+
+            await apiWrite('타자성적!A2:AC', batterValues);
+            successMessages.push(`타자 ${result.count}명`);
+          }
+          
+          if (dataType === 'pitcher' || result.type === 'pitcher') {
+            // 투수 데이터만 가져온 경우
+            console.log(`투수 ${result.count}명 데이터 처리 중...`);
+            
+            await fetch('/api/sheets', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                action: 'clear',
+                range: '투수성적!A2:AA100'
+              })
+            });
+
+            const pitcherValues = result.data.map(player => [
+              player.name || '',
+              player.era || '',
+              player.games || '',
+              player.w || '',
+              player.l || '',
+              player.sv || '',
+              player.hld || '',
+              player.wpct || '',
+              player.bf || '',
+              player.ab || '',
+              player.np || '',
+              player.ip || '',
+              player.h || '',
+              player.hr || '',
+              player.sh || '',
+              player.sf || '',
+              player.bb || '',
+              player.ibb || '',
+              player.hbp || '',
+              player.so || '',
+              player.wp || '',
+              player.bk || '',
+              player.r || '',
+              player.er || '',
+              player.whip || '',
+              player.oavg || '',
+              player.kper9 || ''
+            ]);
+
+            await apiWrite('투수성적!A2:AA', pitcherValues);
+            successMessages.push(`투수 ${result.count}명`);
+          }
+          
+          if (dataType === 'games' || result.type === 'games') {
             // 경기 데이터만 가져온 경우
             console.log(`경기 ${result.count}개 데이터 처리 중...`);
             
