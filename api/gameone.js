@@ -1,114 +1,31 @@
-import * as cheerio from 'cheerio';
+import fetch from 'node-fetch';
 
-// 고정 URL 설정 (로그인 불필요 - 공개 페이지)
 const URLS = {
   batter: 'http://www.gameone.kr/club/info/ranking/hitter?club_idx=42934&season=2025&kind=5&lig_idx=487&group=45&part=2',
-  pitcher: 'http://www.gameone.kr/club/info/ranking/pitcher?club_idx=42934&season=2025&kind=5&lig_idx=487&group=45&part=2',
-  games: 'http://www.gameone.kr/club/info/schedule/result?club_idx=42934'
+  pitcher: 'http://www.gameone.kr/club/info/ranking/pitcher?club_idx=42934&season=2025&kind=5&lig_idx=487&group=45&part=2'
 };
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
-
-// 경기 기록 크롤링 함수 추가
-async function fetchGameResults() {
-  try {
-    console.log('경기 기록 크롤링 시작...');
-    
-    const response = await fetch(URLS.games, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
-    });
-
-    const html = await response.text();
-    const $ = cheerio.load(html);
-    
-    const games = [];
-    
-    // 경기 결과 파싱 - class="scon_players" 리스트 기준
-    $('.scon_players').each((index, element) => {
-      try {
-        // 1. 일시(날짜) 추출
-        const dateText = $(element).find('td:first-child').text().trim();
-        
-        // 2. 게임 정보 추출
-        const gameCell = $(element).find('td').eq(3); // 4번째 td (게임 정보)
-        
-        // 팀 정보 추출
-        const team1Element = gameCell.find('.game.team1');
-        const team2Element = gameCell.find('.team2');
-        
-        const team1Name = team1Element.find('a').text().trim() || team1Element.text().replace(/\d+/g, '').trim();
-        const team2Name = team2Element.find('a').text().trim() || team2Element.text().replace(/\d+/g, '').trim();
-        
-        // 스코어 추출
-        const team1Score = parseInt(team1Element.find('.score').text().trim()) || 0;
-        const team2Score = parseInt(team2Element.find('.score').text().trim()) || 0;
-        
-        // 3. 상대팀 결정 (지존 리틀 베이스볼 클럽이 아닌 팀)
-        let opponent = '';
-        let homeAway = '';
-        let ourScore = 0;
-        let opponentScore = 0;
-        
-        if (team1Name.includes('지존') || team1Name.includes('리틀') || team1Name.includes('베이스볼')) {
-          // 우리팀이 team1 (홈)
-          opponent = team2Name;
-          homeAway = '홈';
-          ourScore = team1Score;
-          opponentScore = team2Score;
-        } else if (team2Name.includes('지존') || team2Name.includes('리틀') || team2Name.includes('베이스볼')) {
-          // 우리팀이 team2 (원정)
-          opponent = team1Name;
-          homeAway = '원정';
-          ourScore = team2Score;
-          opponentScore = team1Score;
-        } else {
-          // 팀 이름이 명확하지 않은 경우 스킵
-          return;
-        }
-        
-        // 4. 결과 계산 (우리 점수 - 상대 점수)
-        const scoreDiff = ourScore - opponentScore;
-        const result = `${ourScore}-${opponentScore}`;
-        
-        // 5. 비고 (콜드승 체크)
-        const coldWin = gameCell.find('.exp_win').text().includes('콜드승') ? '콜드승' : '';
-        
-        // 날짜와 상대팀이 있는 경우만 추가
-        if (dateText && opponent) {
-          games.push({
-            date: dateText,
-            opponent: opponent.replace(/^\s*\d+\s*/, ''), // 앞의 숫자 제거
-            homeAway: homeAway,
-            score: result,
-            result: scoreDiff > 0 ? '승' : scoreDiff < 0 ? '패' : '무',
-            note: coldWin,
-            stadium: '', // 경기장 정보는 별도 추출 필요시 추가
-            ourScore: ourScore,
-            opponentScore: opponentScore
-          });
-          
-          console.log(`경기 추가: ${dateText} ${homeAway} vs ${opponent} - ${result} (${scoreDiff > 0 ? '승' : scoreDiff < 0 ? '패' : '무'}${coldWin ? ' ' + coldWin : ''})`);
-        }
-      } catch (error) {
-        console.error(`경기 ${index} 파싱 오류:`, error);
-      }
-    });
-    
-    console.log(`경기 ${games.length}개 크롤링 완료`);
-    return games;
-  } catch (error) {
-    console.error('경기 기록 크롤링 실패:', error);
-    throw error;
-  }
+/**
+ * 텍스트를 정리하는 헬퍼 함수
+ */
+function cleanText(text) {
+  return text.trim().replace(/\s+/g, ' ');
 }
 
-// 타자 랭킹 크롤링
+/**
+ * 숫자 값을 파싱하는 헬퍼 함수
+ */
+function parseNumber(value) {
+  const cleaned = value.trim();
+  if (cleaned === '-' || cleaned === '' || cleaned === '0') {
+    return '0';
+  }
+  return cleaned;
+}
+
+/**
+ * 타자 랭킹 데이터를 크롤링하는 함수
+ */
 async function fetchBatterRanking() {
   try {
     console.log('타자 랭킹 크롤링 시작...');
@@ -120,67 +37,95 @@ async function fetchBatterRanking() {
     });
 
     const html = await response.text();
-    const $ = cheerio.load(html);
+    console.log('HTML 가져오기 성공');
     
     const players = [];
     
-    // 테이블 파싱 (안전한 방식)
-    $('.section_rank table tbody tr, table tbody tr').each((index, element) => {
-      const cells = $(element).find('td');
-      
-      if (cells.length >= 29) {
-        const nameWithNumber = $(cells[1]).text().trim();
-        const name = nameWithNumber.replace(/\(\d+\)/, '').trim();
-        
-        // 이름이 비어있으면 스킵
-        if (!name) return;
-        
-        const player = {
-          name: name,
-          avg: $(cells[2]).text().trim(),
-          games: $(cells[3]).text().trim(),
-          pa: $(cells[4]).text().trim(),
-          ab: $(cells[5]).text().trim(),
-          r: $(cells[6]).text().trim(),
-          h: $(cells[7]).text().trim(),
-          single: $(cells[8]).text().trim(),
-          double: $(cells[9]).text().trim(),
-          triple: $(cells[10]).text().trim(),
-          hr: $(cells[11]).text().trim(),
-          tb: $(cells[12]).text().trim(),
-          rbi: $(cells[13]).text().trim(),
-          sb: $(cells[14]).text().trim(),
-          cs: $(cells[15]).text().trim(),
-          sh: $(cells[16]).text().trim(),
-          sf: $(cells[17]).text().trim(),
-          bb: $(cells[18]).text().trim(),
-          ibb: $(cells[19]).text().trim(),
-          hbp: $(cells[20]).text().trim(),
-          so: $(cells[21]).text().trim(),
-          gdp: $(cells[22]).text().trim(),
-          slg: $(cells[23]).text().trim(),
-          obp: $(cells[24]).text().trim(),
-          sbPct: $(cells[25]).text().trim(),
-          multiHit: $(cells[26]).text().trim(),
-          ops: $(cells[27]).text().trim(),
-          bbk: $(cells[28]).text().trim(),
-          xbhh: $(cells[29]).text().trim()
-        };
-        
-        players.push(player);
-        console.log(`타자 추가: ${name}, 타율: ${player.avg}`);
-      }
-    });
+    // 마크다운 테이블 파싱
+    const lines = html.split('\n');
+    let inTable = false;
+    let headerPassed = false;
     
-    console.log(`타자 ${players.length}명 크롤링 완료`);
+    for (const line of lines) {
+      // 테이블 라인 확인 (| 로 시작하고 여러 개의 | 포함)
+      if (line.includes('|') && line.split('|').length > 10) {
+        
+        // 헤더 라인 건너뛰기
+        if (line.includes('순위') && line.includes('이름')) {
+          inTable = true;
+          console.log('타자 테이블 헤더 발견');
+          continue;
+        }
+        
+        // 구분선 건너뛰기 (---|---|---)
+        if (line.includes('---')) {
+          headerPassed = true;
+          continue;
+        }
+        
+        // 데이터 라인 파싱
+        if (inTable && headerPassed) {
+          const cells = line.split('|').map(cell => cell.trim()).filter(cell => cell);
+          
+          // 최소 29개 컬럼 확인 (순위부터 장타/안타까지)
+          if (cells.length >= 29) {
+            console.log(`타자 데이터 파싱 중: ${cells[1]} (${cells.length}개 컬럼)`);
+            
+            const player = {
+              이름: cleanText(cells[1]),
+              타율: parseNumber(cells[2]),
+              경기: parseNumber(cells[3]),
+              타석: parseNumber(cells[4]),
+              타수: parseNumber(cells[5]),
+              득점: parseNumber(cells[6]),
+              안타: parseNumber(cells[7]),
+              '1루타': parseNumber(cells[8]),
+              '2루타': parseNumber(cells[9]),
+              '3루타': parseNumber(cells[10]),
+              홈런: parseNumber(cells[11]),
+              루타: parseNumber(cells[12]),
+              타점: parseNumber(cells[13]),
+              도루: parseNumber(cells[14]),
+              도실: parseNumber(cells[15]),
+              희타: parseNumber(cells[16]),
+              희비: parseNumber(cells[17]),
+              볼넷: parseNumber(cells[18]),
+              고의4구: parseNumber(cells[19]),
+              사구: parseNumber(cells[20]),
+              삼진: parseNumber(cells[21]),
+              병살: parseNumber(cells[22]),
+              장타율: parseNumber(cells[23]),
+              출루율: parseNumber(cells[24]),
+              도루성공률: parseNumber(cells[25]),
+              멀티히트: parseNumber(cells[26]),
+              OPS: parseNumber(cells[27]),
+              'BB/K': parseNumber(cells[28]),
+              '장타/안타': cells.length > 29 ? parseNumber(cells[29]) : '0'
+            };
+            
+            players.push(player);
+          }
+        }
+        
+        // 테이블이 끝나면 중단
+        if (inTable && headerPassed && cells.length < 10) {
+          break;
+        }
+      }
+    }
+    
+    console.log(`타자 ${players.length}명 데이터 파싱 완료`);
     return players;
+    
   } catch (error) {
     console.error('타자 랭킹 크롤링 실패:', error);
     throw error;
   }
 }
 
-// 투수 랭킹 크롤링
+/**
+ * 투수 랭킹 데이터를 크롤링하는 함수
+ */
 async function fetchPitcherRanking() {
   try {
     console.log('투수 랭킹 크롤링 시작...');
@@ -192,147 +137,135 @@ async function fetchPitcherRanking() {
     });
 
     const html = await response.text();
-    const $ = cheerio.load(html);
+    console.log('HTML 가져오기 성공');
     
     const players = [];
     
-    // 테이블 파싱 (안전한 방식)
-    $('.section_rank table tbody tr, table tbody tr').each((index, element) => {
-      const cells = $(element).find('td');
-      
-      if (cells.length >= 27) {
-        const nameWithNumber = $(cells[1]).text().trim();
-        const name = nameWithNumber.replace(/\(\d+\)/, '').trim();
-        
-        // 이름이 비어있으면 스킵
-        if (!name) return;
-        
-        const player = {
-          name: name,
-          era: $(cells[2]).text().trim(),
-          games: $(cells[3]).text().trim(),
-          w: $(cells[4]).text().trim(),
-          l: $(cells[5]).text().trim(),
-          sv: $(cells[6]).text().trim(),
-          hld: $(cells[7]).text().trim(),
-          wpct: $(cells[8]).text().trim(),
-          bf: $(cells[9]).text().trim(),
-          ab: $(cells[10]).text().trim(),
-          np: $(cells[11]).text().trim(),
-          ip: $(cells[12]).text().trim(),
-          h: $(cells[13]).text().trim(),
-          hr: $(cells[14]).text().trim(),
-          sh: $(cells[15]).text().trim(),
-          sf: $(cells[16]).text().trim(),
-          bb: $(cells[17]).text().trim(),
-          ibb: $(cells[18]).text().trim(),
-          hbp: $(cells[19]).text().trim(),
-          so: $(cells[20]).text().trim(),
-          wp: $(cells[21]).text().trim(),
-          bk: $(cells[22]).text().trim(),
-          r: $(cells[23]).text().trim(),
-          er: $(cells[24]).text().trim(),
-          whip: $(cells[25]).text().trim(),
-          oavg: $(cells[26]).text().trim(),
-          kper9: $(cells[27]).text().trim()
-        };
-        
-        players.push(player);
-        console.log(`투수 추가: ${name}, 방어율: ${player.era}`);
-      }
-    });
+    // 마크다운 테이블 파싱
+    const lines = html.split('\n');
+    let inTable = false;
+    let headerPassed = false;
     
-    console.log(`투수 ${players.length}명 크롤링 완료`);
+    for (const line of lines) {
+      // 테이블 라인 확인
+      if (line.includes('|') && line.split('|').length > 10) {
+        
+        // 헤더 라인 건너뛰기
+        if (line.includes('순위') && line.includes('이름')) {
+          inTable = true;
+          console.log('투수 테이블 헤더 발견');
+          continue;
+        }
+        
+        // 구분선 건너뛰기
+        if (line.includes('---')) {
+          headerPassed = true;
+          continue;
+        }
+        
+        // 데이터 라인 파싱
+        if (inTable && headerPassed) {
+          const cells = line.split('|').map(cell => cell.trim()).filter(cell => cell);
+          
+          // 최소 27개 컬럼 확인
+          if (cells.length >= 27) {
+            console.log(`투수 데이터 파싱 중: ${cells[1]} (${cells.length}개 컬럼)`);
+            
+            const player = {
+              이름: cleanText(cells[1]),
+              방어율: parseNumber(cells[2]),
+              경기: parseNumber(cells[3]),
+              승: parseNumber(cells[4]),
+              패: parseNumber(cells[5]),
+              세이브: parseNumber(cells[6]),
+              홀드: parseNumber(cells[7]),
+              승률: parseNumber(cells[8]),
+              타자: parseNumber(cells[9]),
+              타수: parseNumber(cells[10]),
+              투구수: parseNumber(cells[11]),
+              이닝: parseNumber(cells[12]),
+              피안타: parseNumber(cells[13]),
+              피홈런: parseNumber(cells[14]),
+              희타: parseNumber(cells[15]),
+              희비: parseNumber(cells[16]),
+              볼넷: parseNumber(cells[17]),
+              고의4구: parseNumber(cells[18]),
+              사구: parseNumber(cells[19]),
+              탈삼진: parseNumber(cells[20]),
+              폭투: parseNumber(cells[21]),
+              보크: parseNumber(cells[22]),
+              실점: parseNumber(cells[23]),
+              자책점: parseNumber(cells[24]),
+              WHIP: parseNumber(cells[25]),
+              피안타율: parseNumber(cells[26]),
+              탈삼진율: cells.length > 27 ? parseNumber(cells[27]) : '0'
+            };
+            
+            players.push(player);
+          }
+        }
+        
+        // 테이블이 끝나면 중단
+        if (inTable && headerPassed && cells.length < 10) {
+          break;
+        }
+      }
+    }
+    
+    console.log(`투수 ${players.length}명 데이터 파싱 완료`);
     return players;
+    
   } catch (error) {
     console.error('투수 랭킹 크롤링 실패:', error);
     throw error;
   }
 }
 
+/**
+ * API 엔드포인트 핸들러
+ */
 export default async function handler(req, res) {
-  // CORS 처리
+  // CORS 헤더 설정
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
   if (req.method === 'OPTIONS') {
-    return res.status(200).json({});
+    res.status(200).end();
+    return;
+  }
+
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const { action, type } = req.body || req.query;
+    console.log('게임원 크롤링 API 호출됨');
+    
+    // 타자와 투수 데이터를 동시에 가져오기
+    const [batters, pitchers] = await Promise.all([
+      fetchBatterRanking(),
+      fetchPitcherRanking()
+    ]);
 
-    console.log('게임원 크롤링 요청:', { action, type });
+    console.log(`크롤링 완료 - 타자: ${batters.length}명, 투수: ${pitchers.length}명`);
 
-    // 액션 유효성 검사
-    const validActions = ['fetchBatter', 'fetchPitcher', 'fetchGames', 'fetchAll'];
-    if (!validActions.includes(action)) {
-      return res.status(400).json({
-        success: false,
-        error: `Invalid action: ${action}. Valid actions: ${validActions.join(', ')}`
-      });
-    }
-
-    // 타자 랭킹
-    if (action === 'fetchBatter' || type === 'batter') {
-      const batterData = await fetchBatterRanking();
-      
-      return res.status(200).json({
-        success: true,
-        data: batterData,
-        count: batterData.length,
-        type: 'batter'
-      });
-    }
-
-    // 투수 랭킹
-    if (action === 'fetchPitcher' || type === 'pitcher') {
-      const pitcherData = await fetchPitcherRanking();
-      
-      return res.status(200).json({
-        success: true,
-        data: pitcherData,
-        count: pitcherData.length,
-        type: 'pitcher'
-      });
-    }
-
-    // 경기 기록
-    if (action === 'fetchGames' || type === 'games') {
-      const gamesData = await fetchGameResults();
-      
-      return res.status(200).json({
-        success: true,
-        data: gamesData,
-        count: gamesData.length,
-        type: 'games'
-      });
-    }
-
-    // 타자 + 투수 + 경기 모두
-    if (action === 'fetchAll' || type === 'all') {
-      const batterData = await fetchBatterRanking();
-      const pitcherData = await fetchPitcherRanking();
-      const gamesData = await fetchGameResults();
-      
-      return res.status(200).json({
-        success: true,
-        batter: batterData,
-        pitcher: pitcherData,
-        games: gamesData,
-        batterCount: batterData.length,
-        pitcherCount: pitcherData.length,
-        gamesCount: gamesData.length
-      });
-    }
-
-    return res.status(400).json({
-      success: false,
-      error: 'Invalid action. Use fetchBatter, fetchPitcher, fetchGames, or fetchAll'
+    res.status(200).json({
+      success: true,
+      data: {
+        batters,
+        pitchers
+      },
+      timestamp: new Date().toISOString()
     });
 
   } catch (error) {
     console.error('게임원 크롤링 에러:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 }
