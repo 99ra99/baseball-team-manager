@@ -140,11 +140,11 @@ const BatterStatsPivot = ({ batterStats, onFetchGameOne, isMaster }) => {
           </div>
           {isMaster && onFetchGameOne && (
             <button
-              onClick={onFetchGameOne}
+              onClick={() => onFetchGameOne('batter')}
               className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
             >
               <RefreshCw className="w-4 h-4" />
-              게임원에서 가져오기
+              타자 데이터 가져오기
             </button>
           )}
           <button
