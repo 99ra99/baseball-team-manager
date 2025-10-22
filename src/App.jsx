@@ -546,27 +546,47 @@ function App() {
         window.html2canvas = html2canvas.default;
       }
       
-      // 스크린샷 생성
+      // 스크린샷 생성 (안전한 방식)
       const canvas = await window.html2canvas(lineupDiv, {
         backgroundColor: '#ffffff',
-        scale: 1.5,
+        scale: 1.2,
         logging: false,
-        useCORS: true,
-        allowTaint: true,
-        removeContainer: true,
-        imageTimeout: 0,
+        useCORS: false,
+        allowTaint: false,
+        removeContainer: false,
+        imageTimeout: 15000,
+        ignoreElements: (element) => {
+          // 문제가 될 수 있는 요소들 무시
+          return element.tagName === 'SVG' || 
+                 element.tagName === 'IFRAME' || 
+                 element.classList?.contains('lucide') ||
+                 element.hasAttribute('data-lucide');
+        },
         onclone: (clonedDoc) => {
-          // 클론된 문서에서 불필요한 요소 제거
-          const clonedDiv = clonedDoc.getElementById('lineup-display');
-          if (clonedDiv) {
-            // 인터랙티브 요소들 제거
-            const selects = clonedDiv.querySelectorAll('select');
-            selects.forEach(select => {
-              const span = clonedDoc.createElement('span');
-              span.textContent = select.options[select.selectedIndex]?.text || '';
-              span.className = 'px-3 py-2 bg-white border rounded';
-              select.parentNode.replaceChild(span, select);
-            });
+          try {
+            const clonedDiv = clonedDoc.getElementById('lineup-display');
+            if (clonedDiv) {
+              // SVG 아이콘들 제거
+              const svgs = clonedDiv.querySelectorAll('svg, [data-lucide]');
+              svgs.forEach(svg => svg.remove());
+              
+              // select 요소를 텍스트로 변환
+              const selects = clonedDiv.querySelectorAll('select');
+              selects.forEach(select => {
+                const span = clonedDoc.createElement('span');
+                span.textContent = select.options[select.selectedIndex]?.text || '선택';
+                span.className = 'px-3 py-2 bg-white border rounded text-sm';
+                span.style.display = 'inline-block';
+                span.style.minWidth = '120px';
+                select.parentNode?.replaceChild(span, select);
+              });
+              
+              // 버튼들 제거
+              const buttons = clonedDiv.querySelectorAll('button');
+              buttons.forEach(button => button.remove());
+            }
+          } catch (error) {
+            console.warn('onclone 처리 중 오류:', error);
           }
         }
       });
@@ -585,35 +605,76 @@ function App() {
     } catch (error) {
       console.error('라인업 이미지 저장 실패:', error);
       
-      // 대안: 브라우저의 프린트 기능 사용
-      if (confirm('이미지 저장에 실패했습니다. 대신 프린트 기능을 사용하시겠습니까?')) {
-        const printWindow = window.open('', '_blank');
-        printWindow.document.write(`
-          <html>
-            <head>
-              <title>라인업</title>
-              <style>
-                body { font-family: Arial, sans-serif; margin: 20px; }
-                .lineup-item { display: flex; align-items: center; margin: 10px 0; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
-                .lineup-number { font-weight: bold; margin-right: 20px; min-width: 30px; }
-                .lineup-player { flex: 1; margin-right: 20px; }
-                .lineup-position { min-width: 100px; }
-              </style>
-            </head>
-            <body>
-              <h1>지존리틀베이스볼클럽 라인업</h1>
-              ${lineup.map((item, idx) => `
-                <div class="lineup-item">
-                  <span class="lineup-number">${idx + 1}</span>
-                  <span class="lineup-player">${item.player || '(미정)'}</span>
-                  <span class="lineup-position">${item.position || '-'}</span>
-                </div>
-              `).join('')}
-            </body>
-          </html>
-        `);
-        printWindow.document.close();
-        printWindow.print();
+      // 대안 1: 텍스트 형태로 복사
+      const lineupText = `지존리틀베이스볼클럽 라인업 (${new Date().toLocaleDateString()})\n\n` +
+        lineup.map((item, idx) => 
+          `${idx + 1}. ${item.player || '(미정)'} - ${item.position || '-'}`
+        ).join('\n');
+      
+      if (confirm('이미지 저장에 실패했습니다. 라인업을 텍스트로 클립보드에 복사하시겠습니까?')) {
+        try {
+          await navigator.clipboard.writeText(lineupText);
+          alert('라인업이 클립보드에 복사되었습니다!');
+        } catch (clipboardError) {
+          // 클립보드 실패 시 프린트 기능 제공
+          if (confirm('클립보드 복사도 실패했습니다. 프린트 기능을 사용하시겠습니까?')) {
+            const printWindow = window.open('', '_blank');
+            printWindow.document.write(`
+              <html>
+                <head>
+                  <title>라인업</title>
+                  <style>
+                    body { font-family: 'Malgun Gothic', Arial, sans-serif; margin: 20px; }
+                    .header { text-align: center; margin-bottom: 30px; }
+                    .lineup-item { 
+                      display: flex; 
+                      align-items: center; 
+                      margin: 15px 0; 
+                      padding: 12px; 
+                      border: 2px solid #3b82f6; 
+                      border-radius: 8px; 
+                      background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+                    }
+                    .lineup-number { 
+                      font-weight: bold; 
+                      font-size: 18px;
+                      margin-right: 20px; 
+                      min-width: 40px; 
+                      color: #1e40af;
+                    }
+                    .lineup-player { 
+                      flex: 1; 
+                      margin-right: 20px; 
+                      font-size: 16px;
+                      font-weight: 500;
+                    }
+                    .lineup-position { 
+                      min-width: 120px; 
+                      font-size: 14px;
+                      color: #6b7280;
+                      text-align: right;
+                    }
+                  </style>
+                </head>
+                <body>
+                  <div class="header">
+                    <h1>지존리틀베이스볼클럽</h1>
+                    <h2>라인업 (${new Date().toLocaleDateString()})</h2>
+                  </div>
+                  ${lineup.map((item, idx) => `
+                    <div class="lineup-item">
+                      <span class="lineup-number">${idx + 1}</span>
+                      <span class="lineup-player">${item.player || '(미정)'}</span>
+                      <span class="lineup-position">${item.position || '-'}</span>
+                    </div>
+                  `).join('')}
+                </body>
+              </html>
+            `);
+            printWindow.document.close();
+            printWindow.print();
+          }
+        }
       }
     }
   };
