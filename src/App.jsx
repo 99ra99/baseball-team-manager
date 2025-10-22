@@ -156,8 +156,8 @@ function App() {
         let successMessages = [];
         
         // === 타자 데이터 처리 ===
-        if (result.batter && result.batter.length > 0) {
-          console.log(`타자 ${result.batterCount}명 데이터 처리 중...`);
+        if (result.data?.batters && result.data.batters.length > 0) {
+          console.log(`타자 ${result.data.batters.length}명 데이터 처리 중...`);
           
           // 기존 타자 데이터 클리어
           await fetch('/api/sheets', {
@@ -170,7 +170,7 @@ function App() {
           });
 
           // 타자 데이터를 Google Sheets 형식으로 변환
-          const batterValues = result.batter.map(player => [
+          const batterValues = result.data.batters.map(player => [
             player.name || '',
             player.avg || '',
             player.games || '',
@@ -205,12 +205,12 @@ function App() {
           // 타자 데이터 저장
           await apiWrite('타자성적!A2:AC', batterValues);
           console.log('✅ 타자 데이터 저장 완료');
-          successMessages.push(`타자 ${result.batterCount}명`);
+          successMessages.push(`타자 ${result.data.batters.length}명`);
         }
 
         // === 투수 데이터 처리 ===
-        if (result.pitcher && result.pitcher.length > 0) {
-          console.log(`투수 ${result.pitcherCount}명 데이터 처리 중...`);
+        if (result.data?.pitchers && result.data.pitchers.length > 0) {
+          console.log(`투수 ${result.data.pitchers.length}명 데이터 처리 중...`);
           
           // 기존 투수 데이터 클리어
           await fetch('/api/sheets', {
@@ -223,7 +223,7 @@ function App() {
           });
 
           // 투수 데이터를 Google Sheets 형식으로 변환
-          const pitcherValues = result.pitcher.map(player => [
+          const pitcherValues = result.data.pitchers.map(player => [
             player.name || '',
             player.era || '',
             player.games || '',
@@ -256,7 +256,7 @@ function App() {
           // 투수 데이터 저장
           await apiWrite('투수성적!A2:AA', pitcherValues);
           console.log('✅ 투수 데이터 저장 완료');
-          successMessages.push(`투수 ${result.pitcherCount}명`);
+          successMessages.push(`투수 ${result.data.pitchers.length}명`);
         }
 
         // === 경기 데이터 처리 ===
