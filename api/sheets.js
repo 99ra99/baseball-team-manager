@@ -1,219 +1,342 @@
 import { google } from 'googleapis';
+import bcrypt from 'bcryptjs';
 
-// 환경 변수에서 서비스 계정 정보 가져오기
-const getAuth = () => {
-  try {
-    const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
-    
-    return new google.auth.GoogleAuth({
-      credentials,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
-  } catch (error) {
-    console.error('인증 초기화 실패:', error);
-    throw new Error('Google 인증 설정 오류');
-  }
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
+// 기본 마스터 계정 (하드코딩)
+const DEFAULT_MASTER = {
+  username: 'admin',
+  password: 'admin123',
+  name: '관리자',
+  role: '마스터'
+};
 
-/**
- * API 핸들러
- */
 export default async function handler(req, res) {
-  // CORS 헤더 설정
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
   if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
+    return res.status(200).json({});
   }
 
   try {
-    console.log(`\n=== Sheets API 호출 ===`);
-    console.log('Method:', req.method);
-    console.log('URL:', req.url);
-    console.log('Query:', JSON.stringify(req.query));
-    console.log('Body:', JSON.stringify(req.body));
+    const auth = new google.auth.GoogleAuth({
+      credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON),
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
 
-    // 모든 소스에서 파라미터 수집 (최대 호환성)
-    const allParams = {
-      ...req.query,
-      ...req.body,
-    };
+    const sheets = google.sheets({ version: 'v4', auth });
+    const spreadsheetId = process.env.SPREADSHEET_ID;
 
-    console.log('All Params:', JSON.stringify(allParams));
+    const { method, body } = req;
+    const { action, range, values } = body || {};
 
-    // action 추출 (여러 패턴 지원)
-    let action = allParams.action || allParams.type || allParams.method;
-    
-    // sheetName 추출 (여러 패턴 지원)
-    let sheetName = allParams.sheetName || allParams.sheet || allParams.name;
-    
-    // range 추출
-    let range = allParams.range || 'A:Z';
-    
-    // values 추출
-    let values = allParams.values || allParams.data || allParams.rows;
+    // 로그인 처리
+    if (action === 'login') {
+      const { username, password } = body;
 
-    console.log('Parsed:', { action, sheetName, range, hasValues: !!values });
+      // 기본 관리자 계정 체크
+      if (username === DEFAULT_MASTER.username) {
+        const isValid = await bcrypt.compare(password, await bcrypt.hash(DEFAULT_MASTER.password, 10));
+        if (password === DEFAULT_MASTER.password || isValid) {
+          return res.status(200).json({
+            success: true,
+            user: {
+              username: DEFAULT_MASTER.username,
+              name: DEFAULT_MASTER.name,
+              role: DEFAULT_MASTER.role
+            }
+          });
+        }
+      }
 
-    // action이 없으면 기본값 또는 에러
-    if (!action) {
-      console.error('❌ action 없음 - 전체 파라미터:', allParams);
-      
-      // 만약 sheetName만 있고 values가 없으면 read로 간주
-      if (sheetName && !values) {
-        console.log('→ 자동으로 read로 처리');
-        action = 'read';
-      } else {
-        return res.status(400).json({ 
-          error: 'action 파라미터가 필요합니다',
-          hint: 'action, type, 또는 method 파라미터를 전달하세요',
-          receivedParams: Object.keys(allParams),
-          example: { action: 'read', sheetName: '사용자', range: 'A:D' }
+      // 스프레드시트에서 사용자 조회
+      try {
+        const response = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: '사용자!A2:D',
+        });
+
+        if (response.data.values) {
+          for (const row of response.data.values) {
+            const [storedUsername, passwordHash, name, role] = row;
+            if (storedUsername === username) {
+              const isValid = await bcrypt.compare(password, passwordHash);
+              if (isValid) {
+                return res.status(200).json({
+                  success: true,
+                  user: { username, name, role }
+                });
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.log('사용자 시트 조회 실패 (아직 없을 수 있음):', error.message);
+      }
+
+      return res.status(200).json({
+        success: false,
+        error: '아이디 또는 비밀번호가 올바르지 않습니다.'
+      });
+    }
+
+    // 사용자 추가
+    if (action === 'addUser') {
+      const { user } = body;
+      const { username, password, name, role } = user;
+
+      // 중복 체크
+      try {
+        const response = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: '사용자!A2:A',
+        });
+
+        if (response.data.values) {
+          const existingUsers = response.data.values.flat();
+          if (existingUsers.includes(username)) {
+            return res.status(200).json({
+              success: false,
+              error: '이미 존재하는 아이디입니다.'
+            });
+          }
+        }
+      } catch (error) {
+        console.log('사용자 시트가 아직 없을 수 있음');
+      }
+
+      // 비밀번호 해시화
+      const passwordHash = await bcrypt.hash(password, 10);
+
+      // 사용자 추가
+      await sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: '사용자!A2:D',
+        valueInputOption: 'RAW',
+        resource: {
+          values: [[username, passwordHash, name, role]]
+        }
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: '사용자가 추가되었습니다.'
+      });
+    }
+
+    // 사용자 삭제
+    if (action === 'deleteUser') {
+      const { username } = body;
+
+      if (username === 'admin') {
+        return res.status(200).json({
+          success: false,
+          error: '관리자 계정은 삭제할 수 없습니다.'
+        });
+      }
+
+      try {
+        const response = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: '사용자!A2:D',
+        });
+
+        if (response.data.values) {
+          const users = response.data.values;
+          const updatedUsers = users.filter(row => row[0] !== username);
+
+          // 전체 데이터 다시 쓰기
+          await sheets.spreadsheets.values.clear({
+            spreadsheetId,
+            range: '사용자!A2:D',
+          });
+
+          if (updatedUsers.length > 0) {
+            await sheets.spreadsheets.values.update({
+              spreadsheetId,
+              range: '사용자!A2:D',
+              valueInputOption: 'RAW',
+              resource: { values: updatedUsers }
+            });
+          }
+
+          return res.status(200).json({
+            success: true,
+            message: '사용자가 삭제되었습니다.'
+          });
+        }
+      } catch (error) {
+        console.error('사용자 삭제 실패:', error);
+        return res.status(200).json({
+          success: false,
+          error: '사용자 삭제 중 오류가 발생했습니다.'
         });
       }
     }
 
-    // sheetName이 없으면 에러
-    if (!sheetName) {
-      console.error('❌ sheetName 없음');
-      return res.status(400).json({ 
-        error: 'sheetName 파라미터가 필요합니다',
-        hint: 'sheetName, sheet, 또는 name 파라미터를 전달하세요',
-        receivedParams: Object.keys(allParams)
-      });
-    }
-
-    const auth = getAuth();
-    const sheets = google.sheets({ version: 'v4', auth });
-
-    let result;
-
-    // READ
-    if (action === 'read' || action === 'get' || action === 'fetch') {
-      console.log(`📖 READ: ${sheetName}!${range}`);
-      
+    // GET - 데이터 읽기
+    if (method === 'GET' || action === 'read') {
+      const readRange = req.query.range || range;
       const response = await sheets.spreadsheets.values.get({
-        spreadsheetId: SPREADSHEET_ID,
-        range: `${sheetName}!${range}`,
+        spreadsheetId,
+        range: readRange,
       });
-      
-      result = response.data.values || [];
-      console.log(`✅ 읽기 완료: ${result.length}행`);
-    }
-    
-    // WRITE / UPDATE
-    else if (action === 'write' || action === 'update' || action === 'set') {
-      if (!values) {
-        return res.status(400).json({ error: 'values 파라미터가 필요합니다' });
-      }
-      
-      console.log(`✍️ WRITE: ${sheetName}!${range}, ${values.length}행`);
-      
-      // 데이터 정리
-      const cleanValues = Array.isArray(values) 
-        ? values.map(row => 
-            Array.isArray(row)
-              ? row.map(cell => {
-                  if (cell === null || cell === undefined) return '';
-                  if (typeof cell === 'object') return JSON.stringify(cell);
-                  return String(cell);
-                })
-              : [String(row)]
-          )
-        : [[String(values)]];
-      
-      const response = await sheets.spreadsheets.values.update({
-        spreadsheetId: SPREADSHEET_ID,
-        range: `${sheetName}!${range}`,
-        valueInputOption: 'USER_ENTERED',
-        requestBody: {
-          values: cleanValues,
-        },
-      });
-      
-      result = response.data;
-      console.log(`✅ 쓰기 완료: ${response.data.updatedCells}개 셀`);
-    }
-    
-    // APPEND / ADD
-    else if (action === 'append' || action === 'add' || action === 'insert') {
-      if (!values) {
-        return res.status(400).json({ error: 'values 파라미터가 필요합니다' });
-      }
-      
-      console.log(`➕ APPEND: ${sheetName}, ${values.length}행`);
-      
-      const cleanValues = Array.isArray(values)
-        ? values.map(row => 
-            Array.isArray(row)
-              ? row.map(cell => {
-                  if (cell === null || cell === undefined) return '';
-                  if (typeof cell === 'object') return JSON.stringify(cell);
-                  return String(cell);
-                })
-              : [String(row)]
-          )
-        : [[String(values)]];
-      
-      const response = await sheets.spreadsheets.values.append({
-        spreadsheetId: SPREADSHEET_ID,
-        range: `${sheetName}!A:A`,
-        valueInputOption: 'USER_ENTERED',
-        requestBody: {
-          values: cleanValues,
-        },
-      });
-      
-      result = response.data;
-      console.log(`✅ 추가 완료: ${response.data.updates.updatedRows}행`);
-    }
-    
-    // CLEAR / DELETE
-    else if (action === 'clear' || action === 'delete' || action === 'remove') {
-      console.log(`🗑️ CLEAR: ${sheetName}!${range}`);
-      
-      const response = await sheets.spreadsheets.values.clear({
-        spreadsheetId: SPREADSHEET_ID,
-        range: `${sheetName}!${range}`,
-      });
-      
-      result = response.data;
-      console.log(`✅ 지우기 완료`);
-    }
-    
-    else {
-      console.error('❌ 유효하지 않은 action:', action);
-      return res.status(400).json({ 
-        error: '유효하지 않은 action입니다',
-        validActions: ['read/get/fetch', 'write/update/set', 'append/add/insert', 'clear/delete/remove'],
-        received: action,
-        allParams: allParams
+
+      return res.status(200).json({
+        success: true,
+        data: response.data,
       });
     }
 
-    console.log('=== API 성공 ===\n');
-    res.status(200).json({
-      success: true,
-      data: result,
-      timestamp: new Date().toISOString()
+    // POST - 게임원 데이터 크롤링 (수정된 부분!)
+    if (method === 'POST' && action === 'fetchGameOne') {
+      const { url } = body;
+      
+      try {
+        console.log('게임원 크롤링 시작:', url);
+        
+        const response = await fetch(url);
+        const html = await response.text();
+        
+        console.log('HTML 가져오기 성공');
+        
+        const players = [];
+        
+        // 마크다운 테이블 파싱
+        const lines = html.split('\n');
+        let inTable = false;
+        let headerPassed = false;
+        
+        for (const line of lines) {
+          // 테이블 라인 확인 (| 로 시작하고 여러 개의 | 포함)
+          if (line.includes('|') && line.split('|').length > 10) {
+            
+            // 헤더 라인 건너뛰기
+            if (line.includes('순위') && line.includes('이름')) {
+              inTable = true;
+              console.log('테이블 헤더 발견');
+              continue;
+            }
+            
+            // 구분선 건너뛰기 (---|---|---)
+            if (line.includes('---')) {
+              headerPassed = true;
+              continue;
+            }
+            
+            // 데이터 라인 파싱
+            if (inTable && headerPassed) {
+              const cells = line.split('|').map(cell => cell.trim()).filter(cell => cell);
+              
+              // 최소 29개 컬럼 확인 (타자는 29개, 투수는 27개)
+              if (cells.length >= 27) {
+                console.log(`선수 데이터 파싱 중: ${cells[1]} (${cells.length}개 컬럼)`);
+                
+                // 이름에서 등번호 제거
+                const nameWithNumber = cells[1];
+                const name = nameWithNumber.replace(/\(\d+\)/, '').trim();
+                
+                const player = {
+                  name: name,
+                  avg: cells[2] || '0',
+                  games: cells[3] || '0',
+                  pa: cells[4] || '0',
+                  ab: cells[5] || '0',
+                  r: cells[6] || '0',
+                  h: cells[7] || '0',
+                  single: cells[8] || '0',
+                  double: cells[9] || '0',
+                  triple: cells[10] || '0',
+                  hr: cells[11] || '0',
+                  tb: cells[12] || '0',
+                  rbi: cells[13] || '0',
+                  sb: cells[14] || '0',
+                  cs: cells[15] || '0',
+                  sh: cells[16] || '0',
+                  sf: cells[17] || '0',
+                  bb: cells[18] || '0',
+                  ibb: cells[19] || '0',
+                  hbp: cells[20] || '0',
+                  so: cells[21] || '0',
+                  gdp: cells[22] || '0',
+                  slg: cells[23] || '0',
+                  obp: cells[24] || '0',
+                  sbPct: cells[25] || '0',
+                  multiHit: cells[26] || '0',
+                  ops: cells[27] || '0',
+                  bbk: cells[28] || '0',
+                  xbhh: cells.length > 29 ? cells[29] : '0'
+                };
+                
+                console.log(`선수 추가: ${name}, 타율: ${player.avg}, OPS: ${player.ops}`);
+                players.push(player);
+              }
+            }
+            
+            // 테이블이 끝나면 중단
+            if (inTable && headerPassed && cells.length < 10) {
+              break;
+            }
+          }
+        }
+        
+        console.log(`총 ${players.length}명의 선수 데이터 파싱 완료`);
+        
+        return res.status(200).json({
+          success: true,
+          data: players,
+          count: players.length
+        });
+        
+      } catch (error) {
+        console.error('GameOne fetch error:', error);
+        return res.status(200).json({
+          success: false,
+          error: '게임원 데이터를 가져오는데 실패했습니다: ' + error.message
+        });
+      }
+    }
+
+    // POST - 데이터 쓰기
+    if (method === 'POST' && action === 'write') {
+      const response = await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range,
+        valueInputOption: 'RAW',
+        resource: { values },
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: response.data,
+      });
+    }
+
+    // POST - 데이터 클리어
+    if (method === 'POST' && action === 'clear') {
+      const response = await sheets.spreadsheets.values.clear({
+        spreadsheetId,
+        range,
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: response.data,
+      });
+    }
+
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid action',
     });
 
   } catch (error) {
-    console.error('=== API 에러 ===');
-    console.error('Message:', error.message);
-    console.error('Stack:', error.stack);
-    console.error('==================\n');
-    
-    res.status(500).json({
+    console.error('API Error:', error);
+    return res.status(500).json({
       success: false,
       error: error.message,
-      timestamp: new Date().toISOString()
     });
   }
 }
