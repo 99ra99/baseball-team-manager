@@ -528,22 +528,94 @@ function App() {
     }
   };
 
-  // 라인업 PNG 저장
-  const saveLineupAsImage = () => {
+  // 라인업 PNG 저장 (개선된 버전)
+  const saveLineupAsImage = async () => {
     const lineupDiv = document.getElementById('lineup-display');
-    if (!lineupDiv) return;
+    if (!lineupDiv) {
+      alert('라인업 영역을 찾을 수 없습니다.');
+      return;
+    }
 
-    import('html2canvas').then(html2canvas => {
-      html2canvas.default(lineupDiv, {
+    try {
+      // 로딩 표시
+      const originalText = lineupDiv.innerHTML;
+      
+      // html2canvas 라이브러리 로드
+      if (typeof window.html2canvas === 'undefined') {
+        const html2canvas = await import('html2canvas');
+        window.html2canvas = html2canvas.default;
+      }
+      
+      // 스크린샷 생성
+      const canvas = await window.html2canvas(lineupDiv, {
         backgroundColor: '#ffffff',
-        scale: 2
-      }).then(canvas => {
-        const link = document.createElement('a');
-        link.download = `lineup_${new Date().toISOString().split('T')[0]}.png`;
-        link.href = canvas.toDataURL();
-        link.click();
+        scale: 1.5,
+        logging: false,
+        useCORS: true,
+        allowTaint: true,
+        removeContainer: true,
+        imageTimeout: 0,
+        onclone: (clonedDoc) => {
+          // 클론된 문서에서 불필요한 요소 제거
+          const clonedDiv = clonedDoc.getElementById('lineup-display');
+          if (clonedDiv) {
+            // 인터랙티브 요소들 제거
+            const selects = clonedDiv.querySelectorAll('select');
+            selects.forEach(select => {
+              const span = clonedDoc.createElement('span');
+              span.textContent = select.options[select.selectedIndex]?.text || '';
+              span.className = 'px-3 py-2 bg-white border rounded';
+              select.parentNode.replaceChild(span, select);
+            });
+          }
+        }
       });
-    });
+
+      // 이미지 다운로드
+      const link = document.createElement('a');
+      link.download = `lineup_${new Date().toISOString().split('T')[0]}.png`;
+      link.href = canvas.toDataURL('image/png', 0.95);
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      console.log('라인업 이미지 저장 완료');
+      
+    } catch (error) {
+      console.error('라인업 이미지 저장 실패:', error);
+      
+      // 대안: 브라우저의 프린트 기능 사용
+      if (confirm('이미지 저장에 실패했습니다. 대신 프린트 기능을 사용하시겠습니까?')) {
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+          <html>
+            <head>
+              <title>라인업</title>
+              <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                .lineup-item { display: flex; align-items: center; margin: 10px 0; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+                .lineup-number { font-weight: bold; margin-right: 20px; min-width: 30px; }
+                .lineup-player { flex: 1; margin-right: 20px; }
+                .lineup-position { min-width: 100px; }
+              </style>
+            </head>
+            <body>
+              <h1>지존리틀베이스볼클럽 라인업</h1>
+              ${lineup.map((item, idx) => `
+                <div class="lineup-item">
+                  <span class="lineup-number">${idx + 1}</span>
+                  <span class="lineup-player">${item.player || '(미정)'}</span>
+                  <span class="lineup-position">${item.position || '-'}</span>
+                </div>
+              `).join('')}
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+        printWindow.print();
+      }
+    }
   };
 
   // 로그인 체크 중
