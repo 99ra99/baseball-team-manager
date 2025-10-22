@@ -1,6 +1,5 @@
 import { google } from 'googleapis';
 import bcrypt from 'bcryptjs';
-import * as cheerio from 'cheerio';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -191,82 +190,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // POST - 게임원 데이터 크롤링
-    if (method === 'POST' && action === 'fetchGameOne') {
-      const { url } = body;
-      
-      try {
-        const response = await fetch(url);
-        const html = await response.text();
-        const $ = cheerio.load(html);
-        
-        const players = [];
-        
-        // 테이블의 각 행 파싱
-        $('.section_rank table tbody tr').each((index, element) => {
-          const cells = $(element).find('td');
-          
-          console.log(`행 ${index}: 셀 개수 = ${cells.length}`);
-          
-          // 최소 30개 셀이 있어야 함 (순위 포함)
-          if (cells.length >= 30) {
-            // 이름에서 등번호 제거
-            const nameWithNumber = $(cells[1]).text().trim();
-            const name = nameWithNumber.replace(/\(\d+\)/, '').trim();
-            
-            const player = {
-              name: name,
-              avg: $(cells[2]).text().trim(),
-              games: $(cells[3]).text().trim(),
-              pa: $(cells[4]).text().trim(),
-              ab: $(cells[5]).text().trim(),
-              r: $(cells[6]).text().trim(),
-              h: $(cells[7]).text().trim(),
-              single: $(cells[8]).text().trim(),
-              double: $(cells[9]).text().trim(),
-              triple: $(cells[10]).text().trim(),
-              hr: $(cells[11]).text().trim(),
-              tb: $(cells[12]).text().trim(),
-              rbi: $(cells[13]).text().trim(),
-              sb: $(cells[14]).text().trim(),
-              cs: $(cells[15]).text().trim(),
-              sh: $(cells[16]).text().trim(),
-              sf: $(cells[17]).text().trim(),
-              bb: $(cells[18]).text().trim(),
-              ibb: $(cells[19]).text().trim(),
-              hbp: $(cells[20]).text().trim(),
-              so: $(cells[21]).text().trim(),
-              gdp: $(cells[22]).text().trim(),
-              slg: $(cells[23]).text().trim(),
-              obp: $(cells[24]).text().trim(),
-              sbPct: $(cells[25]).text().trim(),
-              multiHit: $(cells[26]).text().trim(),
-              ops: $(cells[27]).text().trim(),
-              bbk: $(cells[28]).text().trim(),
-              xbhh: $(cells[29]).text().trim()
-            };
-            
-            console.log(`선수 추가: ${name}, 타율: ${player.avg}, OPS: ${player.ops}`);
-            players.push(player);
-          }
-        });
-        
-        console.log(`총 ${players.length}명의 선수 데이터 파싱 완료`);
-        
-        return res.status(200).json({
-          success: true,
-          data: players,
-          count: players.length
-        });
-        
-      } catch (error) {
-        console.error('GameOne fetch error:', error);
-        return res.status(200).json({
-          success: false,
-          error: '게임원 데이터를 가져오는데 실패했습니다: ' + error.message
-        });
-      }
-    }
 
     // POST - 데이터 쓰기
     if (method === 'POST' && action === 'write') {
