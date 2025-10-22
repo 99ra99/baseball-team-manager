@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { ArrowUpDown, ArrowUp, ArrowDown, Search, Download, Eye, EyeOff } from 'lucide-react';
+import { ArrowUpDown, ArrowUp, ArrowDown, Search, Download, Eye, EyeOff, RefreshCw } from 'lucide-react';
 
-const BatterStatsPivot = ({ batterStats }) => {
+const BatterStatsPivot = ({ batterStats, onFetchGameOne, isMaster }) => {
   const [sortKey, setSortKey] = useState('name');
   const [sortOrder, setSortOrder] = useState('asc');
   const [searchTerm, setSearchTerm] = useState('');
@@ -138,6 +138,15 @@ const BatterStatsPivot = ({ batterStats }) => {
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             />
           </div>
+          {isMaster && onFetchGameOne && (
+            <button
+              onClick={onFetchGameOne}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+            >
+              <RefreshCw className="w-4 h-4" />
+              게임원에서 가져오기
+            </button>
+          )}
           <button
             onClick={downloadCSV}
             className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
