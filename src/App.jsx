@@ -103,6 +103,82 @@ function App() {
     }
   };
 
+  // 게임원 데이터 가져오기
+  const fetchFromGameOne = async () => {
+    if (!isMaster) {
+      alert('마스터 권한이 필요합니다.');
+      return;
+    }
+
+    if (!confirm('게임원에서 타자 성적 데이터를 가져오시겠습니까?\n기존 데이터에 추가됩니다.')) {
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const response = await fetch('/api/sheets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'fetchGameOne',
+          url: 'http://www.gameone.kr/club/info/ranking/hitter?club_idx=42934&season=2025&kind=5&lig_idx=487&group=45&part=2'
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success && result.data) {
+        // 데이터를 Google Sheets 형식으로 변환
+        const values = result.data.map(player => [
+          player.name,
+          player.avg,
+          player.games,
+          player.pa,
+          player.ab,
+          player.r,
+          player.h,
+          player.single,
+          player.double,
+          player.triple,
+          player.hr,
+          player.tb,
+          player.rbi,
+          player.sb,
+          player.cs,
+          player.sh,
+          player.sf,
+          player.bb,
+          player.ibb,
+          player.hbp,
+          player.so,
+          player.gdp,
+          player.slg,
+          player.obp,
+          player.sbPct,
+          player.multiHit,
+          player.ops,
+          player.bbk,
+          player.xbhh
+        ]);
+
+        // Google Sheets에 저장
+        await apiWrite('타자성적!A2:AB', values);
+        
+        alert(`${result.count}명의 선수 데이터를 가져왔습니다!`);
+        
+        // 데이터 새로고침
+        loadAllData();
+      } else {
+        alert('데이터 가져오기 실패: ' + (result.error || '알 수 없는 오류'));
+      }
+    } catch (error) {
+      console.error('게임원 데이터 가져오기 실패:', error);
+      alert('데이터를 가져오는 중 오류가 발생했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // 데이터 로딩
   useEffect(() => {
     if (user) {
@@ -556,7 +632,11 @@ function App() {
 
         {/* 타자 성적 탭 */}
         {activeTab === 'batter' && (
-          <BatterStatsPivot batterStats={batterStats} />
+          <BatterStatsPivot 
+            batterStats={batterStats} 
+            onFetchGameOne={fetchFromGameOne}
+            isMaster={isMaster}
+          />
         )}
 
         {/* 투수 성적 탭 */}
