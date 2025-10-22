@@ -349,7 +349,7 @@ function App() {
     try {
       const [playersData, batterData, pitcherData, gamesData] = await Promise.all([
         apiRead('선수명단!A2:F'),
-        apiRead('타자성적!A2:AB'),
+        apiRead('타자성적!A2:AC'),
         apiRead('투수성적!A2:AA'),
         apiRead('경기기록!A2:G')
       ]);
