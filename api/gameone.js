@@ -1,9 +1,11 @@
 import * as cheerio from 'cheerio';
 
-// 게임원 계정 정보 (환경 변수 사용 권장)
-const GAMEONE_ID = process.env.GAMEONE_ID || 'lk6462';
-const GAMEONE_PW = process.env.GAMEONE_PW || 'hoochi62';
-const CLUB_IDX = '42934';
+// 고정 URL 설정 (로그인 불필요 - 공개 페이지)
+const URLS = {
+  batter: 'http://www.gameone.kr/club/info/ranking/hitter?club_idx=42934&season=2025&kind=5&lig_idx=487&group=45&part=2',
+  pitcher: 'http://www.gameone.kr/club/info/ranking/pitcher?club_idx=42934&season=2025&kind=5&lig_idx=487&group=45&part=2',
+  games: 'http://www.gameone.kr/club/info/schedule/result?club_idx=42934'
+};
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,43 +13,61 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-// 게임원 로그인 함수
-async function loginGameOne() {
+// 경기 기록 크롤링 함수 추가
+async function fetchGameResults() {
   try {
-    console.log('게임원 로그인 시도...');
+    console.log('경기 기록 크롤링 시작...');
     
-    // 로그인 시도
-    const loginResponse = await fetch('http://www.gameone.kr/member/login_ok', {
-      method: 'POST',
+    const response = await fetch(URLS.games, {
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      },
-      body: `user_id=${GAMEONE_ID}&user_pw=${GAMEONE_PW}`,
-      redirect: 'manual'
+      }
     });
 
-    // 쿠키 추출
-    const cookies = loginResponse.headers.get('set-cookie');
-    console.log('로그인 응답 쿠키:', cookies);
+    const html = await response.text();
+    const $ = cheerio.load(html);
     
-    return cookies || '';
+    const games = [];
+    
+    // 경기 결과 테이블 파싱
+    $('.tbl_schedule tbody tr').each((index, element) => {
+      const cells = $(element).find('td');
+      
+      if (cells.length >= 7) {
+        const dateText = $(cells[0]).text().trim();
+        const opponent = $(cells[2]).find('.team_name').text().trim();
+        const score = $(cells[3]).text().trim();
+        const result = $(cells[4]).text().trim();
+        const stadium = $(cells[5]).text().trim();
+        
+        games.push({
+          date: dateText,
+          opponent: opponent,
+          score: score,
+          result: result,
+          stadium: stadium,
+          homeAway: stadium.includes('홈') ? '홈' : '원정'
+        });
+        
+        console.log(`경기 추가: ${dateText} vs ${opponent} - ${score} (${result})`);
+      }
+    });
+    
+    console.log(`경기 ${games.length}개 크롤링 완료`);
+    return games;
   } catch (error) {
-    console.error('로그인 실패:', error);
-    return '';
+    console.error('경기 기록 크롤링 실패:', error);
+    throw error;
   }
 }
 
 // 타자 랭킹 크롤링
-async function fetchBatterRanking(cookies, season = '2025') {
+async function fetchBatterRanking() {
   try {
     console.log('타자 랭킹 크롤링 시작...');
     
-    const url = `http://www.gameone.kr/club/info/ranking/hitter?club_idx=${CLUB_IDX}&season=${season}`;
-    
-    const response = await fetch(url, {
+    const response = await fetch(URLS.batter, {
       headers: {
-        'Cookie': cookies,
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
     });
@@ -111,15 +131,12 @@ async function fetchBatterRanking(cookies, season = '2025') {
 }
 
 // 투수 랭킹 크롤링
-async function fetchPitcherRanking(cookies, season = '2025') {
+async function fetchPitcherRanking() {
   try {
     console.log('투수 랭킹 크롤링 시작...');
     
-    const url = `http://www.gameone.kr/club/info/ranking/pitcher?club_idx=${CLUB_IDX}&season=${season}`;
-    
-    const response = await fetch(url, {
+    const response = await fetch(URLS.pitcher, {
       headers: {
-        'Cookie': cookies,
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
     });
@@ -187,23 +204,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { action, season = '2025', type } = req.body || req.query;
+    const { action, type } = req.body || req.query;
 
-    console.log('게임원 크롤링 요청:', { action, season, type });
-
-    // 로그인
-    const cookies = await loginGameOne();
-    
-    if (!cookies) {
-      return res.status(200).json({
-        success: false,
-        error: '게임원 로그인에 실패했습니다.'
-      });
-    }
+    console.log('게임원 크롤링 요청:', { action, type });
 
     // 타자 랭킹
     if (action === 'fetchBatter' || type === 'batter') {
-      const batterData = await fetchBatterRanking(cookies, season);
+      const batterData = await fetchBatterRanking();
       
       return res.status(200).json({
         success: true,
@@ -215,7 +222,7 @@ export default async function handler(req, res) {
 
     // 투수 랭킹
     if (action === 'fetchPitcher' || type === 'pitcher') {
-      const pitcherData = await fetchPitcherRanking(cookies, season);
+      const pitcherData = await fetchPitcherRanking();
       
       return res.status(200).json({
         success: true,
@@ -225,23 +232,38 @@ export default async function handler(req, res) {
       });
     }
 
-    // 타자 + 투수 모두
+    // 경기 기록
+    if (action === 'fetchGames' || type === 'games') {
+      const gamesData = await fetchGameResults();
+      
+      return res.status(200).json({
+        success: true,
+        data: gamesData,
+        count: gamesData.length,
+        type: 'games'
+      });
+    }
+
+    // 타자 + 투수 + 경기 모두
     if (action === 'fetchAll' || type === 'all') {
-      const batterData = await fetchBatterRanking(cookies, season);
-      const pitcherData = await fetchPitcherRanking(cookies, season);
+      const batterData = await fetchBatterRanking();
+      const pitcherData = await fetchPitcherRanking();
+      const gamesData = await fetchGameResults();
       
       return res.status(200).json({
         success: true,
         batter: batterData,
         pitcher: pitcherData,
+        games: gamesData,
         batterCount: batterData.length,
-        pitcherCount: pitcherData.length
+        pitcherCount: pitcherData.length,
+        gamesCount: gamesData.length
       });
     }
 
     return res.status(400).json({
       success: false,
-      error: 'Invalid action. Use fetchBatter, fetchPitcher, or fetchAll'
+      error: 'Invalid action. Use fetchBatter, fetchPitcher, fetchGames, or fetchAll'
     });
 
   } catch (error) {
